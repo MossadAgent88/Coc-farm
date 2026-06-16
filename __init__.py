@@ -1,52 +1,78 @@
-"""Tests for cocbot.config — BotConfig defaults and load_config parsing."""
+"""Process-scoped session state, deadline stack, structured event channel.
+
+`session` is a module-level singleton (one process = one session).
+Attribute mutation (`session.x = y`) never needs a `global` declaration
+because the variable name `session` itself is never reassigned after init.
+
+`deadline()` is a re-entrant context manager — nested calls push tighter
+deadlines onto a stack; `check_deadline()` reads the top.
+
+`emit()` prints a structured JSON line on stdout that the GUI parses as
+state updates. Event types and fields are documented in `loop.py`.
+"""
 
 import json
-from pathlib import Path
-
-from cocbot.config import BotConfig, load_config
-
-
-def test_defaults_when_file_missing(tmp_path):
-    missing = tmp_path / "does_not_exist.json"
-    cfg = load_config(missing)
-    assert cfg == BotConfig()
+import sys
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any
 
 
-def test_defaults_when_file_corrupt(tmp_path):
-    corrupt = tmp_path / "bad.json"
-    corrupt.write_text("{this is not json")
-    cfg = load_config(corrupt)
-    assert cfg == BotConfig()
+@dataclass
+class BotSession:
+    started_at: float
+    next_break_at: float = 0.0
+    break_blocked: bool = False
+    next_event_at_cycle: int = 0
+    # Fail-obviously counters (Phase 5):
+    consecutive_unknown_states: int = 0
+    # Timestamps of force_restart_coc calls in the last hour.
+    recent_restarts: list[float] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.recent_restarts is None:
+            self.recent_restarts = []
 
 
-def test_parses_int_fields_from_strings(tmp_path):
-    """The GUI writes numbers as strings — load_config must coerce them."""
-    p = tmp_path / "settings.json"
-    p.write_text(json.dumps({"min_loot": "2000000", "max_search": "30"}))
-    cfg = load_config(p)
-    assert cfg.min_loot == 2_000_000
-    assert cfg.max_search == 30
+session = BotSession(started_at=time.time())
 
 
-def test_parses_float_fields_from_strings(tmp_path):
-    p = tmp_path / "settings.json"
-    p.write_text(json.dumps({"fatigue_ramp": "90.5", "skip_long_chance": "0.25"}))
-    cfg = load_config(p)
-    assert cfg.fatigue_ramp == 90.5
-    assert cfg.skip_long_chance == 0.25
+class BotStopRequested(Exception):
+    """Raised to stop the loop from inside — bot cannot safely continue."""
 
 
-def test_parses_bool_from_multiple_representations(tmp_path):
-    p = tmp_path / "settings.json"
-    p.write_text(json.dumps({"donate": "1", "fatigue": "true", "random_events": False}))
-    cfg = load_config(p)
-    assert cfg.donate is True
-    assert cfg.fatigue is True
-    assert cfg.random_events is False
+class DeadlineExceeded(Exception):
+    pass
 
 
-def test_unknown_fields_ignored(tmp_path):
-    p = tmp_path / "settings.json"
-    p.write_text(json.dumps({"min_loot": "1234567", "unknown_key": "ignored"}))
-    cfg = load_config(p)
-    assert cfg.min_loot == 1_234_567
+_deadline_stack: list[float] = []
+
+
+def check_deadline(step_name: str = ""):
+    """Raise DeadlineExceeded if the innermost deadline has passed."""
+    if _deadline_stack and time.time() > _deadline_stack[-1]:
+        raise DeadlineExceeded(f"'{step_name}' exceeded deadline")
+
+
+@contextmanager
+def deadline(seconds: float):
+    """Nestable deadline — the inner block must finish before `seconds` elapse."""
+    _deadline_stack.append(time.time() + seconds)
+    try:
+        yield
+    finally:
+        _deadline_stack.pop()
+
+
+EVENT_PREFIX = "__EVENT__ "
+
+
+def emit(event_type: str, **fields: Any) -> None:
+    """Emit a structured event line to stdout for the GUI to consume.
+
+    Format: `__EVENT__ {"type": ..., ...}\\n`. Event schema lives in the
+    `loop.py` module docstring.
+    """
+    payload = json.dumps({"type": event_type, **fields}, separators=(",", ":"))
+    print(f"{EVENT_PREFIX}{payload}", flush=True, file=sys.stdout)
