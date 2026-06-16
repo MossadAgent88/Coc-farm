@@ -1,0 +1,432 @@
+---
+topic: cocbot_architecture_redesign
+mode: redesign
+rounds: 1
+last_updated: 2026-04-24
+---
+
+# CoC Bot — Architecture Redesign (Round 1)
+
+Thinking-doc produced by a five-framing deepthink pass (Simplifier, Skeptic, Future-Maintainer, Extension-Scenario, Premortem) + synthesis. No code changes here — this is for marination and decision.
+
+## Problem
+
+You have two copies of almost the same bot in one repo. The **flat layer** (`main.py` 1757 LOC + `adb_controller.py` + `screen_detect.py` + `debug_screenshots.py` + `gui.py`) is the one that actually runs when you press Start — `gui.py` spawns `main.py loop`, and `cocbot.spec` (PyInstaller) hiddenimports the flat files only. The **modular layer** (`cocbot/` with `core/`, `game/`, `flow/`, `strategy/`, `behavior/`, `ui/`) is a mid-abandoned refactor attempt from the `refactor/modular-architecture` branch. It was merged but never switched to — `run_bot.py` references it but isn't what the GUI launches.
+
+The "real problem" is not "pick one layout and finish it." It is: **choose boundaries that reflect what the code actually does, delete the unused copy, and stop leaving silent-failure mines (module-level captured config, global state, regex-coupled log parsing) in place.**
+
+## Constraints
+
+**Hard (cannot violate):**
+- LDPlayer emulator, 1920x1080 screen, ADB over localhost. Not moving.
+- Windows host (only). GUI uses customtkinter + Windows layered-window API (log transparency trick in `gui.py` uses `ctypes.windll.user32`).
+- OpenCV template matching is the vision stack (`cv2.matchTemplate` TM_CCOEFF_NORMED / TM_SQDIFF_NORMED). No ML/OCR library — custom digit templates in `templates/digits/`.
+- PyInstaller-built exe is a shipping target (`cocbot.spec`). Any new module layout must update `cocbot.spec` hiddenimports in the same change.
+- Tap timing: min 0.05s between taps, 0.15s after troop selection, else ADB merges rapid taps into swipes (memory: `feedback_tap_timing.md`). Empirically derived — do not "optimize" these.
+- Single-user, single-process bot. No concurrency requirements. No multi-device.
+
+**Soft (preferences):**
+- Template coordinates and timing values are empirically tuned — preserve exact values during any move.
+- Loguru-based logging stays (already wired end-to-end, file rotation configured, GUI parses it).
+- Config via `settings.json` + dataclass stays — the GUI writes this file directly, so any config rework must keep compatibility or migrate `settings.json` atomically.
+- Keep the numbered step labels in `run_attack` (`Step 0: ...`, `Step 1: ...`) — `gui.py` `_STEP_RE` parses them; changing labels breaks the GUI display silently.
+
+**Phantom (feels fixed but isn't):**
+- "We need a Base/Registry/Impl plugin architecture because that's what the global architecture rule says." The rule is a pattern library, not a mandate — it earns its keep with 10+ implementations, not with 3 attack sides that differ only in coordinates.
+- "Strategies are polymorphic behavior" — they're not, currently. `AttackStrategy.get_config()` returns a dict; all three impls execute the same sequence. Data pretending to be behavior.
+- "Config is dynamic / can be hot-edited mid-run." It can't be — module-level `MIN_TOTAL_LOOT = cfg.min_loot` captures at import. The *illusion* of dynamism is a latent bug (see Failure Mode #1 below).
+- "We need a formal state machine because the bot navigates screens." The bot does a **search** (look at screen, try options, retry) not an FSM traversal. Popups and dialogs don't cleanly partition into states. Forcing an FSM balloons or reduces to current code.
+- "The flat layer is legacy; modular is the future." Inverted: the flat layer WORKS and is tested; the modular layer is a duplicate with silent drift (see "Consensus" below for concrete examples).
+
+## Alternatives considered
+
+### Alt 1 — Finish the `cocbot/` refactor; delete the flat files
+
+- **Shape:** Switch `gui.py` to spawn `run_bot.py loop` (uses `cocbot/` package). Update `cocbot.spec` hiddenimports. Delete `main.py`, `adb_controller.py`, `screen_detect.py`, `debug_screenshots.py`, `extract_digits.py`, `generate_debug_overlay.py`. Port `debug_screenshots.py` into `cocbot/` (it's not there currently).
+- **Breakage point:** The `cocbot/` package boundaries are wrong. `cocbot/ui/helpers.py` contains `find_and_tap` — that's vision+input composite, not UI. `cocbot/game/navigation.py` imports `cocbot/game/battle.py` via function-local import to dodge circularity. `cocbot/behavior/breaks.py` imports `cocbot/game/navigation.py` at function scope for the same reason. Two function-local imports = the package boundaries force cycles. Finishing this refactor preserves the mistake. Also: `cocbot/flow/orchestrator.py` already has drift from `main.py` — e.g. `main.py:788` `time.sleep(3 if elapsed > 60 else 1)` vs `cocbot/game/battle.py:73` `time.sleep(1 if elapsed > 60 else 3)` — **logic inverted**. One of these is wrong; nobody knows which.
+- **Cost:** Medium. Delete flat (~2000 LOC). Update GUI subprocess command + PyInstaller spec. Hunt down remaining flat-file references. ~1 day. But the cycle-forcing boundaries remain and will bite later.
+
+### Alt 2 — Delete the `cocbot/` package; keep and polish the flat layer
+
+- **Shape:** Delete `cocbot/` and `run_bot.py`. Keep `main.py`, `adb_controller.py`, `screen_detect.py`, `debug_screenshots.py`, `gui.py`. Fix the silent-failure mines (module globals, captured config, `_break_blocked` global bug at `main.py:1614, 1637`). Polish naming, split `main.py` into 3-4 files at reasonable seams.
+- **Breakage point:** `main.py` is 1757 LOC in one file — already painful to navigate. Polishing without restructuring leaves that pain. Future you still has to scroll through 1000 lines to find the function you want. AND the scar tissue of "we tried to modularize once, gave up, reverted" is demoralizing — next time maintainability needs improvement, the instinct will be "remember the failed refactor? don't touch it."
+- **Cost:** Small. ~2 hours to delete `cocbot/`. Plus the silent-failure fixes — another ~4 hours. Good outcome, limited ceiling.
+
+### Alt 3 — Delete `cocbot/`, then reorganize the flat layer into a RIGHT-SIZED package
+
+- **Shape:** Two-phase. Phase A: delete `cocbot/`, keep flat working. Phase B: reorganize flat files into a `cocbot/` package with **5 modules** (not 6) matching actual boundaries:
+
+  ```
+  cocbot/
+    __init__.py
+    __main__.py          # entry: python -m cocbot [test|attack|loop]
+    config.py            # BotConfig dataclass + load_config (lazy-cached)
+    io.py                # ADB primitives: capture, tap, swipe, press_back, launch_coc, zoom_out
+    vision.py            # pure image→answer: find_template, read_loot, troop_slots, chat_badge, state
+    actions.py           # composite primitives: tap_template, go_home, dismiss_popups, etc.
+    plans.py             # DeployPlan dataclass + three instances (LEFT, RIGHT, BR)
+    loop.py              # run_attack, run_loop, break/fatigue/event scheduling
+    debug.py             # DebugContext + annotate/save (used by actions.py with an injected ctx)
+    gui.py               # customtkinter frontend (formerly root gui.py)
+    templates/           # images (unchanged)
+  ```
+
+  Key decisions:
+  - **No Strategy ABC.** `DeployPlan` is a `@dataclass` with coordinate fields. Three module-level instances. `deploy_troops(plan, slots)` takes a plan. That's it.
+  - **Random events as a dict `{name: (weight, callable)}`.** No ABC, no 7 files under `impl/`, no registry file — seven functions in `loop.py` or `events.py`.
+  - **Config as `@functools.lru_cache`'d `get_config()`**, read inline where needed. No module-level captures. No `MIN_TOTAL_LOOT = cfg.min_loot` ever.
+  - **`BotSession` dataclass** carrying what's currently module globals: `session_start`, `next_break_at`, `break_blocked`, `debug_ctx`, `deadline_stack`. Passed through calls. No globals.
+  - **Deadlines as a context manager stack**, not a module global — `with deadline(120, "home check"): ...` is nestable, re-entrant, and explicit.
+  - **GUI talks to loop via JSON events on stdout**, not regex on log text. One `emit(type="cycle", n=7)` call; `log_output` still shows human log alongside. JSON schema documented in `loop.py` docstring.
+- **Breakage point:** More work than Alt 2. Also: moving `main.py` function-by-function into separate files risks breaking something in the hand-tuned happy path. Each extraction needs a "does the bot still attack a base end-to-end" smoke test. Without automated tests, that's manual.
+- **Cost:** ~1 week focused work. Delete + move + adjust imports + fix PyInstaller spec + smoke-test. New code is ~500 LOC; ~1700 LOC deleted or moved.
+
+### Alt 4 — Leave the duplication; treat `cocbot/` as a library, `main.py` as the CLI/legacy
+
+- **Shape:** Document that `main.py` is the shipping entry point and `cocbot/` is "experimental, for testing only." Move shared logic into `cocbot/` progressively as needed; delete flat copies once nothing imports them.
+- **Breakage point:** This is what the last 6 months have been. It doesn't converge — two copies drift (as they already have, e.g. inverted loot sleep logic). The non-converging middle state has all the cost of duplication without the benefit of either.
+- **Cost:** Near-zero now. Compounding maintenance cost over time. Whenever you fix a bug in one, you either remember to fix in both (you won't, consistently) or the drift grows. Already has grown.
+
+### Alt 5 — Rewrite from scratch with a "proper" state machine
+
+- **Shape:** Design a formal state machine. `State.HOME`, `State.SCOUT`, `State.BATTLE`, etc., with explicit transitions. Rewrite vision + input as clean primitives. Bot is a `while True: state = state.tick()`.
+- **Breakage point:** CoC's UI is not a finite state machine — popups, dialogs, seasonal events, and disconnect overlays don't partition cleanly. Existing code already has `BotState` enum + `infer_state_from_screen` (in `cocbot/game/state.py`) — note that it returns HOME if attack button visible, but the attack button can be visible behind a semi-transparent popup, so it false-positives. The search-style `go_home` exists because classification is unreliable. A formal FSM either explodes to 40+ states or reduces to current code dressed up. Also: the vision/ADB/timing values are empirically tuned over months — a rewrite re-discovers every gotcha (green-button HSV range, loot OCR thresholds, `green_repeat_count < 2` guard for persistent Star Bonus dialogs, etc.).
+- **Cost:** Very large (~3-4 weeks). High risk of regressing working behavior.
+
+### Ranking by architectural merit (migration cost reported separately)
+
+1. **Alt 3** — right boundaries, eliminates duplication, fixes latent bugs, earns extension points cheaply.
+2. **Alt 2** — removes duplication and fixes latent bugs; ceiling limited by 1757-line `main.py`.
+3. **Alt 1** — eliminates duplication but cements wrong boundaries (cycle-forcing splits).
+4. **Alt 5** — rewrite; wrong model for the domain (search, not FSM); loses scar tissue.
+5. **Alt 4** — status quo with a justification; guaranteed drift over time.
+
+Migration cost (separate info, NOT a ranking factor):
+- Alt 2: ~6 hours total
+- Alt 3: ~5-7 days focused work
+- Alt 1: ~1 day
+- Alt 5: ~3-4 weeks
+- Alt 4: 0 hours
+
+## Consensus vs. Conflicts
+
+### Consensus across all 5 framings
+
+- **`cocbot/` is a half-done refactor, not a finished modular architecture.** Concrete drift evidence: `cocbot/game/battle.py:73` uses `time.sleep(1 if elapsed > 60 else 3)` — the flat `main.py:788` has `time.sleep(3 if elapsed > 60 else 1)` — **inverted**. `cocbot/game/loot.py:38` caps retries at 30; `main.py`'s equivalent caps at 10. `cocbot/game/donations.py` bails out when chat icon template misses; `main.py:382-384` falls back to `tap(110, 410)`. The duplication is actively drifting.
+- **`cocbot/strategy/` is a shallow module** (Ousterhout's term). ABC with one abstract method that returns a dict, three impls that execute the same sequence, a registry for three entries. Should be a `DeployPlan` dataclass + three instances + one function. Pattern borrowed from a rule intended for 10+ plugin points; here it adds more indirection than it hides.
+- **Module-level `cfg = load_config()` + captured constants is a silent-failure mine.** Every file that does `MIN_X = cfg.min_x` at module top freezes that value at import. User edits `settings.json`, restarts bot, it works. User edits `settings.json`, bot in-process is unaffected — values are already captured. Any future "hot reload config" feature silently doesn't cover the captured constants. **Scope of the problem:** captured constants appear in `cocbot/game/loot.py` (6 constants), `cocbot/game/battle.py` (4), `cocbot/game/navigation.py` (1), and the flat `main.py` (same pattern). All are trap-doors.
+- **Module-level state globals are process-scoped session state in disguise.** `_break_blocked`, `_session_start_time`, `_current_deadline`, `_next_break_at`, `_next_event_at_cycle`, `debug_screenshots._annotations`. Plus: the concrete bug at `main.py:1614, 1637` — `_break_blocked = False` without a `global` declaration, so it creates a local variable that immediately goes out of scope, leaving the module-level `_break_blocked` stuck at `True` after any `DeadlineExceeded` — anti-detection breaks silently.
+- **Vision (`screen_detect.py`) and ADB (`adb_controller.py`) primitives are correct and should be preserved.** They encode months of empirical tuning. `green_repeat_count < 2` in `go_home` is scar tissue for Star Bonus popups; don't remove. Template confidence thresholds (0.7, 0.8, 0.05) are tuned per-use-case. Digit OCR works at 1920x1080.
+- **GUI regex-parsing bot stdout (`_CYCLE_RE`, `_STEP_RE`, `_LOOT_RE`, `"GOOD LOOT"`, `"surrendering early"`, `"Loot: G="` string matches in `gui.py:_append_log`) is an undocumented API.** Any log-string change silently breaks GUI display. Either document the contract or decouple via structured events on stdout (JSON lines alongside human log).
+- **Fail-obviously is the right posture** for an automation bot against a TOS-enforced game. Silent wrong behavior (bot tapping empty space at precise intervals for 30 minutes) looks more bot-like than a crash and increases ban risk. Asserts, loud warnings, and explicit "I don't know what to do, stopping" states are preferred over silent fallbacks.
+
+### Conflicts — resolved
+
+**Conflict A: Which side of the flat-vs-modular split to keep?**
+
+- Simplifier + Skeptic: neither — collapse to smaller right-sized layout.
+- Future-Maintainer: keep flat names but reorganize into fewer packages.
+- Extension-Scenario: need SOME structure for future `AttackScheme` plug-point.
+
+**Resolution: Alt 3 (delete `cocbot/`, reorganize flat into a 5-module package).** Rationale: the current `cocbot/` package boundaries force circular imports (function-local import workarounds in `breaks.py`, `navigation.py`) — that's a diagnostic that the splits are wrong. A smaller 5-module split along the actual data-flow seams (io → vision → actions → plans → loop) avoids cycles and reads linearly. The flat layer's files are closer to these right boundaries than `cocbot/`'s packages.
+
+**Conflict B: State machine or procedural?**
+
+- Skeptic: no formal FSM — popups don't partition cleanly.
+- Future-Maintainer: wants labeled, discoverable steps.
+- Others neutral.
+
+**Resolution: procedural linear `run_attack` with labeled steps (current shape).** Keep `infer_state_from_screen` for post-exception recovery only, not as a driver. Star Bonus popups, seasonal event dialogs, disconnect overlays make a formal FSM balloon to 40+ states or collapse to current code in disguise.
+
+**Conflict C: Pre-build `AttackScheme` for extension-readiness?**
+
+- Extension-Scenario: no — plumb injection points, don't build the class.
+- Simplifier: no — YAGNI.
+- Others neutral.
+
+**Resolution: inject, don't abstract.** `search_for_good_loot` takes an `accepts_fn: Callable[[loot], bool]` parameter instead of hardcoding the filter. `deploy_troops` takes a `DeployPlan` dataclass. Zero new classes; future `AttackScheme` becomes trivial — either swap `accepts_fn` and `DeployPlan` per scheme, or if real behavior diverges, then add the class with real polymorphism. Pattern earns itself later; no ceremony now.
+
+## Recommended approach
+
+**Alt 3: delete `cocbot/`, reorganize flat files into a 5-module `cocbot/` package with right-sized boundaries, fix the silent-failure mines along the way.**
+
+Chosen over:
+- **Alt 2 (just polish flat)** — ceiling is limited by keeping 1757-line `main.py`; reorganization is the work that actually reduces cognitive load. The extra ~3 days of effort delivers the readability payoff for years of maintenance.
+- **Alt 1 (finish `cocbot/` refactor)** — commits to known-wrong package boundaries and drift-prone duplication persists until switchover. The boundary evidence (two function-local imports just to break cycles) is too strong to ignore.
+- **Alt 4 (leave as-is)** — drift is already measurable after a few months; will compound.
+- **Alt 5 (rewrite)** — wrong domain model (search, not FSM); throws away empirical tuning.
+
+The key architectural moves:
+
+### A. Five modules, linear data flow, no cycles
+
+```
+io.py        ──▶  vision.py  ──▶  actions.py  ──▶  loop.py
+                                      ▲                 │
+                                      │                 ▼
+                                   plans.py         config.py
+                                                    debug.py
+```
+
+- **`io.py`**: pure ADB primitives. No game knowledge. Imports nothing project-local.
+- **`vision.py`**: pure image→answer functions. Imports only `cv2`/`numpy`/project templates. Pure functions of a numpy array. Testable with saved screenshots.
+- **`actions.py`**: composite primitives. Imports `io` + `vision`. `tap_template()`, `go_home()`, `dismiss_popups()`, `check_connection_lost()`, `deploy_attack(plan, slots)`, etc. Imports are one-directional: down to io/vision, not sideways.
+- **`plans.py`**: pure data. `DeployPlan` dataclass + three instances (`LEFT`, `RIGHT`, `BOTTOM_RIGHT`). Zero behavior, zero imports.
+- **`loop.py`**: orchestration — `run_attack`, `run_loop`, break/fatigue/event scheduling. Imports `actions`, `plans`, `config`. The ONLY module with top-level control flow.
+- **`config.py`**: `BotConfig` dataclass + `@lru_cache`'d `get_config()`. Read, never cached as module constants.
+- **`debug.py`**: `DebugContext` class with `set_step`, `add_roi`, `add_tap`, `save`. Not a singleton — passed into `actions`/`loop` as context. When disabled, is a no-op object.
+
+No module imports from `loop.py` (one-way dependency). `actions.py` does not import from `plans.py` (plans are data; actions consume them via parameter). No function-local imports required.
+
+### B. Strategy = data, not a class
+
+`plans.py`:
+```python
+@dataclass(frozen=True)
+class DeployPlan:
+    name: str
+    edge: tuple[tuple[int, int], ...]
+    queen_corner: tuple[int, int]
+    duke_corner: tuple[int, int]
+    baby_spot: tuple[int, int]
+    barracks_points: tuple[tuple[int, int], ...]
+    rage_points: tuple[tuple[int, int], ...]
+    totem_points: tuple[tuple[int, int], ...]
+    jitter: Callable[[int, int], tuple[int, int]]
+    duke_jitter_x: tuple[int, int]
+
+LEFT = DeployPlan(name="left", edge=..., jitter=_jitter_inward_left, ...)
+RIGHT = DeployPlan(name="right", ...)
+BOTTOM_RIGHT = DeployPlan(name="bottom_right", ...)
+
+PLANS_BY_KEY = {"left": LEFT, "right": RIGHT, "bottom_right": BOTTOM_RIGHT}
+```
+
+`actions.py` has one `deploy_attack(plan: DeployPlan, slots: dict[str, int])`. The currently-duplicated 180-line deploy sequence collapses to one function that reads `plan.queen_corner`, `plan.edge`, etc.
+
+No ABC. No registry file. No `impl/` directory. When behavior genuinely diverges (new scheme requires different troop ordering, not just different coordinates), then consider a class — but not before.
+
+### C. Config as a lazy-cached singleton, never captured as module constants
+
+`config.py`:
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def get_config() -> BotConfig:
+    return load_config()
+```
+
+Call sites read `get_config().min_loot` inline. Never `MIN_LOOT = get_config().min_loot` at module scope. Clear semantic: **config is static-at-process-start**. Document in `config.py` and in the GUI ("changes apply next Start").
+
+### D. Session state as an object, not globals
+
+```python
+@dataclass
+class BotSession:
+    started_at: float
+    next_break_at: float
+    break_blocked: bool
+    next_event_at_cycle: int
+    cycles_completed: int
+    debug: DebugContext
+```
+
+Passed through `run_attack(session, cycle)`, `search_for_good_loot(session, ...)`, `maybe_take_break(session)`. No `global _break_blocked`. No module-level `_session_start_time`. The `main.py:1614, 1637` `_break_blocked = False` bug evaporates (no global to forget `global` on).
+
+### E. Deadlines as context managers, not a global
+
+```python
+@contextmanager
+def deadline(seconds: float, label: str):
+    old = _current_deadline
+    _current_deadline = time.time() + seconds
+    try:
+        yield
+    finally:
+        _current_deadline = old
+
+# Usage:
+with deadline(120, "home check"):
+    check_connection_lost()
+    ensure_coc_running()
+```
+
+Nestable, re-entrant, explicit. `check_deadline(step_name)` is still the check function. Replaces the `set_deadline(120) / try / clear_deadline()` boilerplate that appears ~12 times in `main.py`.
+
+### F. GUI ↔ loop via structured events, not log regex
+
+The bot process emits newline-JSON events on a separate channel (stderr, or stdout with a prefix, or — simplest — stdout with both human-log and `__EVENT__ {json}` lines):
+
+```python
+def emit(type: str, **kwargs):
+    print(f"__EVENT__ {json.dumps({'type': type, **kwargs})}", flush=True)
+
+emit("cycle_start", n=7)
+emit("loot_found", gold=..., elixir=..., de=...)
+emit("template_fail", name="3_next_button", confidence=0.42)
+emit("step", label="Step 6: Deploy troops")
+emit("attack_complete", duration_s=...)
+```
+
+GUI's `_read_output` splits each line: if `__EVENT__`, parse JSON and update structured state (cycle counter, step display, loot display); else, append to the text log with human-readable coloring. Schema lives in a docstring in `loop.py` and is version-stable. Changing a log string no longer breaks the GUI.
+
+### G. Fail-obviously defaults
+
+- Template confidence logged at INFO in misses (not DEBUG).
+- Fallback coordinate taps log at WARN with "fallback — template failed, likely drift."
+- A template-fail counter: 5 consecutive fails for the same template emits `template_failing` event and stops the cycle with explicit error.
+- `force_restart_coc` budget: if triggered more than 2x per hour, stop the bot entirely with `{type: "restart_budget_exceeded"}` event.
+- `go_home` failure saves a debug screenshot named `go_home_gave_up_<ts>.png` for postmortem.
+- `infer_state_from_screen` returning UNKNOWN logs WARN; N consecutive UNKNOWNs → stop bot.
+- Loot 0/0/0 on same base for 3 consecutive search attempts → abort cycle, restart from home.
+
+## Trade-offs accepted
+
+- **~5-7 days of focused work** spent on a bot that currently works. The payoff is for the 6+ month horizon — debugging is faster, extensions are cheaper, silent-failure class eliminated. Not justified if you plan to retire the bot in under a month.
+- **Mid-refactor period the bot may break** — there are no automated tests. Manual smoke test ("does one full attack cycle complete?") after every extraction is the only safety net. This is fragile; phased migration (Section "Migration plan" below) and keeping flat layer working until parity is the mitigation.
+- **`run_attack` stays ~250 lines** (10 steps, each 15-30 lines of orchestration). Simplifier's "collapse to a generator of steps" is tempting but risky — the inline sequence makes it easy to read start-to-finish. Accepting length for linearity.
+- **No tests mandated** — recommended but not part of the refactor. Tests for `vision.py` pure functions (feed saved screenshots, assert detected loot/coordinates) are the easy and high-value first tests; ~1 day to write a meaningful starter suite. Deferring for now.
+- **Config stays static-at-process-start.** "Changes apply next Start" in the GUI. No hot-reload. If the user eventually wants hot-reload, it's a small future change (re-read on event / file-watch) since `get_config()` is the single read point.
+- **Deleting `cocbot/` loses the `cocbot/behavior/events/impl/` plugin structure for random events.** Accepted — 7 one-shot stateless events fit in one file as `{name: (weight, callable)}` dict. If events grow to 20+ or become stateful, revisit.
+- **JSON event channel adds a small overhead** to the bot process (JSON serialization per event, ~20 events/cycle). Negligible.
+- **GUI startup splash / themed window stuff in gui.py is preserved as-is.** That code is ~200 LOC of Windows-API / tkinter glue; no architectural value in touching it.
+
+## Migration / implementation plan
+
+Five phases, each ending with the bot in a working (possibly in-flight) state. Each phase has a clear abort-point.
+
+### Phase 0 — Fix the silent-failure mines in the flat layer (half-day, no structural change)
+
+**Rationale:** These are real bugs. Fixing first means they don't propagate into the new layout.
+
+1. `main.py:1614, 1637` — add `global _break_blocked` before `_break_blocked = False` in the two exception handlers. (Or simply: remove the assignment; the relevant reset is in Phase 2.) This is a **silent anti-detection bug** that affects the currently-running bot.
+2. Replace every `MIN_X = cfg.min_x` module-level capture with inline `cfg.min_x` reads in the flat layer. Small diff, no behavior change at startup (cfg value IS frozen at process start); eliminates the trap for future hot-edit attempts.
+3. Add `assert screenshot.shape == (1080, 1920, 3)` at the top of `capture_screenshot()` in `adb_controller.py`. Fails loud if emulator resolution is wrong.
+
+**Abort-criteria for Phase 0:** If any of these fixes change bot behavior in a bad way in a quick smoke test, revert. (None should — all are making latent bugs impossible.)
+
+### Phase 1 — Delete `cocbot/` and `run_bot.py` (1 hour)
+
+1. `rm -rf cocbot/` (the package, not the project — there's no name collision since the top-level project isn't a Python package yet).
+2. `rm run_bot.py`.
+3. Verify `python main.py test` still works, `python gui.py` still works, PyInstaller build via `cocbot.spec` still works. All three paths use only flat files — should be unchanged.
+
+**Abort-criteria:** Any of the three entry points fails. (None should.)
+
+### Phase 2 — Introduce `BotSession` + `@contextmanager deadline` in flat layer (1 day)
+
+1. Create `session.py` with `BotSession` dataclass. Replace module globals `_session_start_time`, `_next_break_at`, `_break_blocked`, `_next_event_at_cycle` with session attributes. Thread `session` through `run_attack`, `maybe_take_break`, `maybe_trigger_random_event`, `search_for_good_loot`, `wait_for_battle_end`.
+2. Replace `set_deadline/clear_deadline/_current_deadline` globals with `@contextmanager deadline(seconds, label)`. Thread through functions OR keep it module-level but as a `deadline_stack: list[float]` with nested push/pop (simpler; no argument threading). Pick one.
+3. Smoke test: full loop cycle runs, breaks trigger, random events trigger.
+
+**Abort-criteria:** Break scheduling or fatigue behavior regresses, and fix isn't obvious within an hour. Revert to module globals; Phase 2 can wait.
+
+### Phase 3 — Reorganize flat files into `cocbot/` package with right boundaries (2-3 days)
+
+This is the big move. Do it file-by-file with smoke tests in between. Order matters:
+
+1. **Create `cocbot/__init__.py`, `cocbot/__main__.py`, `cocbot/config.py`** — config first, it has no deps on the rest.
+2. **Move `adb_controller.py` → `cocbot/io.py`.** Rename functions? No — keep `capture_screenshot`, `tap`, `swipe` names. Update all imports in `main.py`. Smoke test.
+3. **Move `screen_detect.py` → `cocbot/vision.py`.** Update imports. Update `debug_screenshots.py` reference in vision functions (temporarily still imports the flat debug module). Smoke test.
+4. **Move `debug_screenshots.py` → `cocbot/debug.py`** and refactor to a `DebugContext` class (methods on an instance, not module globals). Existing `dbg.set_step`, `dbg.add_match`, `dbg.save` calls in `main.py` become `session.debug.set_step(...)` etc. Smoke test.
+5. **Carve `cocbot/actions.py` out of `main.py`** — move: `safe_press_back`, `_ui_jitter`, `find_and_tap`, `wait_for_screen`, `wait_for_any_screen`, `dismiss_popups`, `go_home`, `ensure_coc_running`, `check_connection_lost`, `check_and_fill_donations`, `request_cc_troops`, `end_battle_and_go_home`, `wait_for_battle_end`. Take `session: BotSession` as a parameter. Smoke test after each function or logical group.
+6. **Create `cocbot/plans.py`** — `DeployPlan` dataclass + `LEFT`, `RIGHT`, `BOTTOM_RIGHT` instances. Move the coordinate constants from `main.py`. Move jitter functions. Smoke test.
+7. **Move `deploy_troops` → `cocbot/actions.py`** — accept `plan: DeployPlan` parameter. Replace the `if side == "left": edge = LEFT_EDGE; ...` dispatcher with `plan: DeployPlan = PLANS_BY_KEY[side or random.choice(...)]`.
+8. **What remains in `main.py`**: `BotState` enum, `infer_state_from_screen`, `run_attack`, `run_loop`, `run_screenshot_test`, `run_bottom_scout`, `maybe_take_break`, `_schedule_next_break`, `maybe_trigger_random_event`, `_schedule_next_event`, `post_attack_delay`, `get_fatigue_multiplier`, `human_delay`, `_RANDOM_EVENTS` list, `maybe_trigger_random_event`, the random event functions. **Rename `main.py` → `cocbot/loop.py`**. Keep random event functions as plain functions (no class hierarchy).
+9. Update `cocbot.spec` hiddenimports: `cocbot`, `cocbot.io`, `cocbot.vision`, `cocbot.actions`, `cocbot.plans`, `cocbot.loop`, `cocbot.config`, `cocbot.debug`. Remove `main`, `screen_detect`, `adb_controller`, `debug_screenshots`.
+10. Update `gui.py`:
+    - `cmd = [venv_py, "-u", "-m", "cocbot", "loop"]` instead of `main.py loop`.
+    - `import main; main.run_loop()` → `from cocbot.loop import run_loop; run_loop()`.
+11. Full-loop smoke test: GUI Start → one full attack cycle with loot found → return home → cycle complete.
+
+**Abort-criteria:** If step 7 (deploy_troops extraction) causes deployment failures in live testing, rollback that step only (keep io/vision/actions). `deploy_troops` is the most coordinate-sensitive function in the codebase.
+
+### Phase 4 — Inject `accepts_fn` into `search_for_good_loot`; replace GUI regex with JSON events (1-2 days, optional)
+
+1. Refactor `search_for_good_loot(session, accepts_fn: Callable[[dict], bool])`. Current filter logic becomes the default `accepts_fn`. Future scheme support is now a one-line parameter swap.
+2. Add `emit(type, **kwargs)` helper in `cocbot/loop.py`. Add emit calls at cycle-start, step-change, loot-found, template-fail, attack-complete. Keep human log alongside.
+3. Update `gui.py::_read_output` to split `__EVENT__` JSON lines from human-log lines. Parse JSON events → update GUI state (cycle counter, step label, loot display). Append human-log lines to the text widget. Delete `_CYCLE_RE`, `_STEP_RE`, `_LOOT_RE`.
+
+**Abort-criteria:** Phase 4 is independent and can be deferred indefinitely. If time runs out, stop at Phase 3.
+
+### Phase 5 — Fail-obviously guardrails (half-day)
+
+1. Template-fail counter with threshold event.
+2. `force_restart_coc` budget (2/hour) with bot-stop event.
+3. `infer_state_from_screen` UNKNOWN counter.
+4. Save debug screenshot on `go_home` failure.
+5. Abort-cycle on 3-consecutive-same-loot in search.
+
+**Abort-criteria:** None — these are all small and independent.
+
+### Blast radius
+
+- **Callers of flat modules:** `gui.py` (2 references: subprocess cmd, compiled-exe import), `cocbot.spec` (hiddenimports), `main.py` (self-imports). Phase 3 step 10 handles all three.
+- **External users:** None (single-user bot).
+- **`settings.json` format:** Unchanged. `BotConfig` dataclass fields are stable.
+- **`templates/` directory:** Unchanged. Template name strings are stable.
+- **Log format:** Changes slightly in Phase 4 (adds `__EVENT__` lines); human log is unchanged. Users grepping the log see no difference.
+
+### Breaking changes visible to the user
+
+- None before Phase 4. After Phase 4, none if GUI is updated in the same commit.
+- PyInstaller build: Phase 3 step 9 must be in the same commit as the code move, or the next `pyinstaller cocbot.spec` build fails. Test the build at end of Phase 3.
+
+## Open questions for user
+
+These need your input before coding — judgment calls, not architecture:
+
+1. **Effort budget.** Alt 3 is 5-7 days focused work. Are you willing to spend that now, or is Alt 2 (6 hours of just polishing flat) closer to what you want? Alt 2 is a real option — architecturally worse ceiling, but bot ships faster with silent-failure mines fixed.
+
+2. **Config semantic.** Confirm: config is read once at process start; to apply changes, restart the bot. GUI shows "changes apply next Start" hint. Agree, or do you want eventual hot-reload (different design choice)?
+
+3. **GUI event channel (Phase 4).** Do you care about decoupling GUI from log regex? If not, skip Phase 4. The coupling is manageable if you're the only maintainer of both — you know what log strings the GUI parses. If it annoys you when you change a log line and the display breaks, do Phase 4.
+
+4. **Tests.** Do you want me to include writing a starter `tests/` suite in the plan (~1 day), or is manual smoke-testing sufficient? Strong vote for tests on `vision.py` pure functions at minimum — they're cheap and lock in template matching behavior.
+
+5. **Random events — keep as dict of functions, or keep as classes?** The plugin class layout in `cocbot/behavior/events/impl/` is reasonable if events grow to 20+ or become stateful. Current 7 events, all one-shot, argue for the dict. Your call; neither is wrong.
+
+6. **Is a rename from `main.py` → `cocbot/loop.py` OK, or do you want to preserve `main.py` as the entry point for muscle memory?** `python main.py loop` could still work as a thin wrapper that imports `cocbot.loop.run_loop`. Cheap to preserve.
+
+## Honest verdict
+
+This is not "the current architecture is solid, nothing to change" territory — the duplication, captured-config mines, module globals, and silent `_break_blocked` bug are real issues. Alt 4 (leave as-is) is actively bad because drift is already measurable.
+
+But it's also not a disaster. The **vision + ADB primitives are correct and empirically tuned**; they preserve into any new layout. The **numbered-step procedural flow is the right shape** for this domain (popups and search, not FSM). The **customtkinter GUI is fine** except for the regex log coupling.
+
+The concrete things I'd flag as architecturally sound and NOT to touch:
+- `adb_controller.py` (`cocbot/core/adb.py`'s equivalent) — small, correct, well-scoped. Move it as `cocbot/io.py`; don't rewrite.
+- The vision module's ROI-then-match optimization (`TEMPLATE_ROIS` dict + search_area cropping in `find_template`) — legitimate perf optimization.
+- `find_template_exact` vs `find_template` separation — real semantic distinction (exact color match for detecting enabled-vs-greyed UI) that the codebase got right.
+- `has_chat_notification` using red-pixel count instead of template matching — correct; works for any badge number.
+- `is_troop_available` using saturation instead of template matching — correct for greyed-vs-colored distinction.
+- The three-layer `_threshold_loot_text` → `_find_digit_contours` → `_crop_and_resize_digit` → match-against-digit-templates OCR chain — works without an OCR library dep.
+- `go_home`'s `green_repeat_count < 2` loop guard — scar tissue for Star Bonus popups; keep.
+- `check_connection_lost`'s two-path logic (immediate reload for "Anyone there?", 300s wait for "Connection lost") — encodes real anti-ban domain knowledge. **Document this reasoning** in a comment; it's currently only in the author's head.
+
+The redesign is about **layout and state discipline**, not re-writing logic.
+
+---
+
+## Appendix: Concrete bugs found while reading the code (fix regardless of which alternative you pick)
+
+These are bugs, not architecture — worth fixing in Phase 0 of any plan.
+
+1. **`main.py:1614` and `main.py:1637`** — `_break_blocked = False` in the exception handlers creates a local variable (missing `global` declaration) and has no effect on the module-level `_break_blocked`. If `search_for_good_loot` sets `_break_blocked = True` (line 1174 via the global in the outer scope, which DOES take effect) and then a `DeadlineExceeded` fires, `_break_blocked` stays True for the remainder of the process. Breaks silently no longer happen after the first deadline.
+
+2. **`cocbot/game/battle.py:73` vs `main.py:788`** — inverted sleep logic. One is correct, one is wrong; `main.py`'s version `time.sleep(3 if elapsed > 60 else 1)` (poll fast early, slow late) looks intentional; `cocbot/game/battle.py`'s `time.sleep(1 if elapsed > 60 else 3)` is the opposite. Whichever is the newer copy silently picked up the wrong value during refactor.
+
+3. **`cocbot/game/loot.py:38`** — `retries < 30` vs `main.py:989` `retries < 10`. Max 15-second vs 5-second wait for OCR to produce non-zero loot. Different bot behavior between the two "equivalent" codepaths.
+
+4. **`cocbot/game/donations.py:37-38`** — bails out when chat icon template misses; `main.py:382-384` falls back to `tap(110, 410)`. Different recovery behavior.
+
+5. **`README.md` line 49** — says `pip install opencv-python numpy loguru easyocr`; `easyocr` is not in `requirements.txt` and not imported anywhere. Stale doc.
+
+6. **`_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW`** used in `adb_controller.py` but NOT in `cocbot/core/adb.py`. The flat version suppresses the cmd.exe window flicker on every ADB call; the modular version doesn't. If you migrate to the modular version as-is, you'll see a flicker per tap during deploy. Small issue; worth noting.
+
+7. **`cocbot.spec`** — `excludes=["easyocr", ...]` — consistent with requirements.txt (no easyocr). Good. But `hiddenimports=["main", "screen_detect", "adb_controller", "debug_screenshots"]` will need updating in Phase 3 step 9; don't forget.
+
+8. **`run_bot.py`** exists but nothing invokes it in production. If you keep Alt 1 or Alt 3, delete it (Alt 3) or make it the actual entry (Alt 1). Dead code is confusing.
+
+9. **`cocbot.log`** accumulates in repo root; listed in `MEMORY.md` as a concern. Already has a `log_file` toggle in config; default is True. Fine as-is if user wants logs; consider changing default to False or redirecting to a `logs/` subdirectory to reduce repo clutter.
