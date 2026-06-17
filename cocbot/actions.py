@@ -25,7 +25,16 @@ from cocbot.io import (
     tap,
     zoom_out,
 )
-from cocbot.plans import DeployPlan, TROOP_BAR_Y
+from cocbot.plans import (
+    BOTTOM_RIGHT_EDGE,
+    DeployPlan,
+    LEFT_CORNER,
+    LEFT_EDGE,
+    RIGHT_CORNER,
+    RIGHT_EDGE,
+    TOP_CORNER,
+    TROOP_BAR_Y,
+)
 from cocbot.session import BotStopRequested, check_deadline, deadline, emit, session
 from cocbot.vision import (
     find_available_donation_cards,
@@ -770,6 +779,39 @@ def _tap_troop(slots: dict[str, int], name: str):
         return False
     tap(slots[name], TROOP_BAR_Y, delay=0.08)
     return True
+
+
+# Deployable "green ring" around a base — reuse the tuned edge points from all
+# three plans so dumped troops land on valid ground no matter the base layout.
+_DUMP_PERIMETER = (
+    LEFT_EDGE + RIGHT_EDGE + BOTTOM_RIGHT_EDGE
+    + (TOP_CORNER, LEFT_CORNER, RIGHT_CORNER)
+)
+# Sweep of X positions across the troop bar (covers all ~11 slots at 1920x1080;
+# overlapping taps just re-select the same slot, which is harmless).
+_DUMP_SLOT_XS = tuple(range(150, 1510, 80))
+
+
+def deploy_dump():
+    """Event-farming deploy: select every troop/hero/spell slot in turn and
+    dump it across the whole base perimeter.
+
+    No template matching, so it works for ANY army (event troops included).
+    The goal is to use up the army for event points, not to win the attack.
+    """
+    logger.info("Dump deploy: emptying entire army onto base for event points")
+    for sx in _DUMP_SLOT_XS:
+        check_deadline("Dump deploy")
+        # Select whatever troop / hero / spell sits in this slot.
+        tap(sx, TROOP_BAR_Y, delay=0.04)
+        # Spread it around the perimeter (enough taps to empty a large stack).
+        points = list(_DUMP_PERIMETER)
+        random.shuffle(points)
+        for x, y in points:
+            tap(x + random.randint(-8, 8), y + random.randint(-8, 8), delay=0.015)
+        # Tap the slot once more -- triggers hero abilities / re-selects leftovers.
+        tap(sx, TROOP_BAR_Y, delay=0.03)
+    logger.info("Dump deploy complete")
 
 
 def deploy_troops(plan: DeployPlan):

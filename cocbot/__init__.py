@@ -23,5 +23,5 @@ Layer boundaries (one-way imports, no cycles):
 #   PATCH = bug fix / template tweak / tuning change
 #   MINOR = new feature (attack scheme, GUI control, event type)
 #   MAJOR = breaking change (resolution target, settings.json schema break)
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 

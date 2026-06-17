@@ -43,6 +43,7 @@ class BotConfig:
     log_file: bool = False
     max_cycles: int = 0
     debug_screenshots: bool = False
+    dump_mode: bool = False
 
 
 def load_config(path: Path = _SETTINGS_FILE) -> BotConfig:

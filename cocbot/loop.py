@@ -45,6 +45,7 @@ from cocbot.actions import (
     _ui_jitter,
     check_and_fill_donations,
     check_connection_lost,
+    deploy_dump,
     deploy_troops,
     dismiss_popups,
     end_battle_and_go_home,
@@ -590,6 +591,34 @@ def run_attack(cycle: int = 0):
 
     # Block breaks during combat (loot search -> troop deploy)
     session.break_blocked = True
+
+    # Event "dump" mode: skip the loot search entirely, throw the whole army
+    # onto whatever base matchmaking gave us, then leave. Used to burn through
+    # the army for event points (not to win).
+    if cfg.dump_mode:
+        _step("Dump mode: deploy army")
+        logger.info("Dump mode ON -- deploying entire army for event points")
+        zoom_out(random.randint(1, 5))
+        time.sleep(0.5)
+        swipe(960, 540, 1200, 700, 300)
+        time.sleep(1)
+        with deadline(120):
+            deploy_dump()
+        session.break_blocked = False
+        _step("Dump mode: wait for end")
+        logger.info("Dump mode: waiting for battle to end...")
+        with deadline(240):
+            wait_for_battle_end()
+        with deadline(120):
+            dismiss_popups()
+        if cfg.donate:
+            with deadline(180):
+                check_and_fill_donations()
+        post_attack_delay()
+        maybe_trigger_random_event(cycle)
+        emit("attack_complete", cycle=cycle)
+        logger.info("=== Dump attack cycle complete ===")
+        return
 
     # Step 4: Check loot -- search for good opponent
     _step("Step 4: Loot search")
