@@ -1,0 +1,70 @@
+name: Build v1.4.0 Windows EXE
+
+on:
+  push:
+    paths:
+      - .github/workflows/build-v1-4-0-exe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-exe:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name GhostFarm-v1.4.0 `
+            --add-data "templates;templates" `
+            --collect-all customtkinter `
+            --collect-all PIL `
+            --hidden-import customtkinter `
+            --hidden-import PIL.Image `
+            --hidden-import cv2 `
+            gui.py
+          if (!(Test-Path "dist/GhostFarm-v1.4.0.exe")) {
+            throw "EXE build failed: dist/GhostFarm-v1.4.0.exe was not created"
+          }
+
+      - name: Upload EXE to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v1.4.0 "dist/GhostFarm-v1.4.0.exe" --clobber
+
+      - name: Remove one-time builder
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/build-v1-4-0-exe.yml -Force
+          if ((git status --porcelain).Length -eq 0) { exit 0 }
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+          git add .github/workflows/build-v1-4-0-exe.yml
+          git commit -m "Remove one-time v1.4.0 exe builder"
+          git push
