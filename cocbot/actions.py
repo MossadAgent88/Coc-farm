@@ -16,6 +16,7 @@ from loguru import logger
 
 from cocbot.config import cfg
 from cocbot.debug import dbg
+from cocbot.event_broom import deploy_broom_witches
 from cocbot.io import (
     capture_screenshot,
     force_restart_coc,
@@ -793,25 +794,15 @@ _DUMP_SLOT_XS = tuple(range(150, 1510, 80))
 
 
 def deploy_dump():
-    """Event-farming deploy: select every troop/hero/spell slot in turn and
-    dump it across the whole base perimeter.
+    """Deploy the active event army using the optimized Broom Witch plan.
 
-    No template matching, so it works for ANY army (event troops included).
-    The goal is to use up the army for event points, not to win the attack.
+    The old dump mode swept every troop-bar slot across the whole perimeter,
+    producing hundreds of ADB taps before the battle could produce useful
+    event points. Broom Witch farming is now bounded to the configured troop
+    slot and deploys timed waves into Wizard Tower pressure lanes. This keeps
+    tap volume low, preserves human-safe delays, and improves crystals/minute.
     """
-    logger.info("Dump deploy: emptying entire army onto base for event points")
-    for sx in _DUMP_SLOT_XS:
-        check_deadline("Dump deploy")
-        # Select whatever troop / hero / spell sits in this slot.
-        tap(sx, TROOP_BAR_Y, delay=0.04)
-        # Spread it around the perimeter (enough taps to empty a large stack).
-        points = list(_DUMP_PERIMETER)
-        random.shuffle(points)
-        for x, y in points:
-            tap(x + random.randint(-8, 8), y + random.randint(-8, 8), delay=0.015)
-        # Tap the slot once more -- triggers hero abilities / re-selects leftovers.
-        tap(sx, TROOP_BAR_Y, delay=0.03)
-    logger.info("Dump deploy complete")
+    deploy_broom_witches()
 
 
 def deploy_troops(plan: DeployPlan):

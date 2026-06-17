@@ -605,19 +605,27 @@ def run_attack(cycle: int = 0):
         with deadline(120):
             deploy_dump()
         session.break_blocked = False
-        _step("Dump mode: wait for end")
-        logger.info("Dump mode: waiting for battle to end...")
-        with deadline(240):
-            wait_for_battle_end()
-        with deadline(120):
-            dismiss_popups()
-        if cfg.donate:
-            with deadline(180):
-                check_and_fill_donations()
+        event_window = max(15.0, float(cfg.broom_witch_battle_seconds))
+        _step("Dump mode: crystal window")
+        emit("battle_wait", cycle=cycle, mode="dump", seconds=event_window)
+        logger.info(f"Dump mode: collecting crystals for {event_window:.1f}s before reset")
+        time.sleep(event_window)
+
+        _step("Dump mode: return home")
+        try:
+            with deadline(120):
+                end_battle_and_go_home()
+        except Exception as e:
+            emit("battle_return_error", cycle=cycle, error=str(e))
+            logger.warning(f"Dump mode return failed: {e}")
+            try:
+                dismiss_results_and_return_home()
+            except Exception:
+                pass
+
         post_attack_delay()
-        maybe_trigger_random_event(cycle)
-        emit("attack_complete", cycle=cycle)
-        logger.info("=== Dump attack cycle complete ===")
+        emit("dump_cycle_complete", cycle=cycle, optimized=True, crystal_window=event_window)
+        logger.info("=== Optimized dump attack cycle complete ===")
         return
 
     # Step 4: Check loot -- search for good opponent
