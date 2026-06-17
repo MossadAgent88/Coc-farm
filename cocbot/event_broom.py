@@ -2,8 +2,8 @@
 
 The normal dump deploy is intentionally generic, but it is expensive for event
 farming: it sweeps many troop-bar positions and sprays every perimeter point.
-For Magical Crystal farming the faster path is to use the known Broom Witch
-slot and deploy controlled waves onto lanes that pressure peripheral Wizard
+For Magical Crystal farming the faster path is to use configured Broom Witch
+slots and deploy controlled waves onto lanes that pressure peripheral Wizard
 Towers first.
 
 This module is pure deployment orchestration: no image recognition and no bot
@@ -55,6 +55,36 @@ def _jitter_point(x: int, y: int, radius: int = 10) -> tuple[int, int]:
     return x + random.randint(-radius, radius), y + random.randint(-radius, radius)
 
 
+def _configured_slot_xs() -> list[int]:
+    """Return bounded troop-bar X coordinates for event deployment.
+
+    Broom Witch/event armies can occupy multiple troop-bar slots. The previous
+    v1.4.1 commit changed deployment to call this helper but failed to commit
+    the helper itself, causing ``NameError: _configured_slot_xs`` at runtime.
+
+    Values come from ``cfg.broom_witch_slot_xs`` as a comma/semicolon separated
+    string, with ``cfg.broom_witch_slot_x`` retained as a legacy fallback.
+    Coordinates are bounded to the visible troop bar area and deduplicated.
+    """
+    raw = str(getattr(cfg, "broom_witch_slot_xs", "") or "")
+    slots: list[int] = []
+    for chunk in raw.replace(";", ",").split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            x = int(float(chunk))
+        except ValueError:
+            logger.warning(f"Ignoring invalid Broom Witch slot x={chunk!r}")
+            continue
+        if 120 <= x <= 1510 and x not in slots:
+            slots.append(x)
+
+    if not slots:
+        slots = [int(getattr(cfg, "broom_witch_slot_x", 250))]
+    return slots[:8]
+
+
 def broom_witch_wave_points(wave: int) -> list[tuple[int, int]]:
     """Return an ordered, per-wave pressure-point list.
 
@@ -70,20 +100,21 @@ def broom_witch_wave_points(wave: int) -> list[tuple[int, int]]:
 def estimated_broom_witch_taps(waves: int | None = None) -> int:
     """Estimate tap volume for Broom Witch deployment.
 
-    Used by tests and by maintainers when tuning crystal/minute. It counts one
-    troop-slot select per wave plus one tap per pressure point.
+    Counts one troop-slot select per configured slot per wave plus one tap per
+    pressure point for each selected slot.
     """
-    wave_count = waves if waves is not None else cfg.broom_witch_waves
-    return wave_count * (1 + len(WIZARD_TOWER_PRESSURE_POINTS))
+    wave_count = max(1, int(waves if waves is not None else cfg.broom_witch_waves))
+    return wave_count * len(_configured_slot_xs()) * (
+        1 + len(WIZARD_TOWER_PRESSURE_POINTS)
+    )
 
 
 def deploy_broom_witches() -> None:
     """Deploy Broom Witches in controlled waves for event-point farming.
 
-    The function uses a configured troop-bar slot instead of scanning images,
-    then deploys each wave across perimeter Wizard Tower pressure lanes. This
-    cuts tap volume by an order of magnitude compared with generic dump mode
-    while preserving human-like timing.
+    The function uses configured troop-bar slots instead of scanning images,
+    then deploys each slot across perimeter Wizard Tower pressure lanes. This
+    keeps deployment bounded while still emptying multiple event troop stacks.
     """
     slot_xs = _configured_slot_xs()
     waves = max(1, int(cfg.broom_witch_waves))
@@ -91,9 +122,9 @@ def deploy_broom_witches() -> None:
     wave_pause = max(0.35, float(cfg.broom_witch_wave_pause))
 
     logger.info(
-        "Broom Witch deploy: %s waves, slot_x=%s, est_taps=%s",
+        "Broom Witch deploy: %s waves, slot_xs=%s, est_taps=%s",
         waves,
-        slot_x,
+        slot_xs,
         estimated_broom_witch_taps(waves),
     )
     emit(
@@ -116,4 +147,4 @@ def deploy_broom_witches() -> None:
             time.sleep(wave_pause + random.uniform(0.0, 0.25))
 
     logger.info("Broom Witch deploy complete")
-    emit("broom_witch_deploy_complete", waves=waves)
+    emit("broom_witch_deploy_complete", waves=waves, slot_xs=slot_xs)
