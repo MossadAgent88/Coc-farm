@@ -1,27 +1,17 @@
-"""CoC bot — vision-based Clash of Clans automation.
+"""CoC Farm Bot package.
 
-Layer boundaries (one-way imports, no cycles):
+Versioning policy
+-----------------
+The GUI/updater reads this value at runtime and compares it with GitHub Release
+tags (for example: local ``1.3.1`` vs remote ``v1.3.2``).
 
-    io  ──▶  vision  ──▶  actions  ──▶  loop
-                              ▲              │
-                              │              ▼
-                           plans          config / session / debug
-
-- io:       ADB primitives (capture, tap, swipe, launch, zoom)
-- vision:   pure image → answer (find_template, read_loot, etc.)
-- actions:  composite primitives (go_home, deploy_troops, search_for_good_loot)
-- plans:    DeployPlan dataclass + LEFT / RIGHT / BOTTOM_RIGHT instances
-- loop:     run_attack, run_loop, break/event scheduling, random events
-- config:   BotConfig + cfg singleton
-- session:  BotSession + deadline() context manager
-- debug:    DebugContext + dbg singleton
+Bump this before publishing a new Release asset, otherwise the in-app updater
+will correctly report "up to date" even if you uploaded a new executable.
 """
 
-# Single source of truth for the build version.
-# Bump manually when cutting a new build (GUI exe, shared package).
-# SemVer: MAJOR.MINOR.PATCH
+# Keep a single source of truth for app/version display + updater comparison.
+# Semantic versioning:
 #   PATCH = bug fix / template tweak / tuning change
 #   MINOR = new feature (attack scheme, GUI control, event type)
 #   MAJOR = breaking change (resolution target, settings.json schema break)
-__version__ = "1.4.1"
-
+__version__ = "1.4.2"
