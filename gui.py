@@ -49,6 +49,7 @@ DEFAULTS = {
     "fatigue_max": "2.0",
     "splash_enabled": True,
     "debug_screenshots": False,
+    "dump_mode": False,
 }
 
 ACCENT = "#4488ff"
@@ -721,6 +722,19 @@ _help_icon(
     "Save annotated screenshots per step to debug/runtime/.",
 ).pack(side="left")
 
+dump_mode_var = ctk.BooleanVar(value=False)
+ctk.CTkSwitch(
+    r,
+    text="Event dump",
+    variable=dump_mode_var,
+    font=("Segoe UI", 13),
+).pack(side="left", padx=(12, 6))
+_help_icon(
+    r,
+    "Event farming: skip loot search and dump the WHOLE army on each base to "
+    "burn troops for event points. Works with any army (no troop images needed).",
+).pack(side="left")
+
 # ── ANTI-DETECTION ──
 ad_card = _section(settings_scroll, "ANTI-DETECTION")
 
@@ -851,6 +865,7 @@ _SETTING_VARS = {
     "fatigue_max": fatigue_max_var,
     "splash_enabled": splash_var,
     "debug_screenshots": debug_screenshots_var,
+    "dump_mode": dump_mode_var,
 }
 
 
