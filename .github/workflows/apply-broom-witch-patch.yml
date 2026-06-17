@@ -29,28 +29,44 @@ jobs:
           actions = root / 'cocbot' / 'actions.py'
           text = actions.read_text(encoding='utf-8')
           if 'from cocbot.event_broom import deploy_broom_witches' not in text:
+              if 'from cocbot.debug import dbg\n' not in text:
+                  raise SystemExit('Import anchor missing in cocbot/actions.py')
               text = text.replace(
                   'from cocbot.debug import dbg\n',
                   'from cocbot.debug import dbg\nfrom cocbot.event_broom import deploy_broom_witches\n',
+                  1,
               )
-          start = text.index('\ndef deploy_dump():')
-          end = text.index('\ndef deploy_troops(', start)
-          replacement = '''\ndef deploy_dump():\n    """Deploy the active event army using the optimized Broom Witch plan.\n\n    The old dump mode swept every troop-bar slot across the whole perimeter,\n    producing hundreds of ADB taps before the battle could produce useful\n    event points. Broom Witch farming is now bounded to the configured troop\n    slot and deploys timed waves into Wizard Tower pressure lanes. This keeps\n    tap volume low, preserves human-safe delays, and improves crystals/minute.\n    """\n    deploy_broom_witches()\n\n'''
-          text = text[:start] + replacement + text[end+1:]
+          replacement = '''\ndef deploy_dump():\n    """Deploy the active event army using the optimized Broom Witch plan.\n\n    The old dump mode swept every troop-bar slot across the whole perimeter,\n    producing hundreds of ADB taps before the battle could produce useful\n    event points. Broom Witch farming is now bounded to the configured troop\n    slot and deploys timed waves into Wizard Tower pressure lanes. This keeps\n    tap volume low, preserves human-safe delays, and improves crystals/minute.\n    """\n    deploy_broom_witches()\n\n\ndef deploy_troops('''
+          text, count = re.subn(
+              r'\ndef deploy_dump\(\):\n.*?\ndef deploy_troops\(',
+              replacement,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit('Could not replace deploy_dump in cocbot/actions.py')
           actions.write_text(text, encoding='utf-8')
 
           loop = root / 'cocbot' / 'loop.py'
           text = loop.read_text(encoding='utf-8')
-          old = '''        session.break_blocked = False\n        _step("Dump mode: wait for end")\n        emit("battle_wait", cycle=cycle, mode="dump")\n        try:\n            with deadline(240):\n                wait_for_battle_end()\n        except Exception as e:\n            emit("battle_wait_error", cycle=cycle, error=str(e))\n            logger.warning(f"Dump mode battle wait failed: {e}")\n            try:\n                end_battle_and_go_home()\n            except Exception:\n                pass\n\n        _step("Dump mode: dismiss results")\n        dismiss_results_and_return_home()\n\n        if donations_due(cycle):\n            _step("Dump mode: donations")\n            request_donations()\n\n        post_attack_delay()\n        maybe_trigger_random_event(cycle)\n        emit("dump_cycle_complete", cycle=cycle)\n        logger.info("=== Dump attack cycle complete ===")\n        return\n'''
           new = '''        session.break_blocked = False\n        event_window = max(15.0, float(cfg.broom_witch_battle_seconds))\n        _step("Dump mode: crystal window")\n        emit("battle_wait", cycle=cycle, mode="dump", seconds=event_window)\n        logger.info(f"Dump mode: collecting crystals for {event_window:.1f}s before reset")\n        time.sleep(event_window)\n\n        _step("Dump mode: return home")\n        try:\n            with deadline(120):\n                end_battle_and_go_home()\n        except Exception as e:\n            emit("battle_return_error", cycle=cycle, error=str(e))\n            logger.warning(f"Dump mode return failed: {e}")\n            try:\n                dismiss_results_and_return_home()\n            except Exception:\n                pass\n\n        post_attack_delay()\n        emit("dump_cycle_complete", cycle=cycle, optimized=True, crystal_window=event_window)\n        logger.info("=== Optimized dump attack cycle complete ===")\n        return\n'''
-          if old not in text:
-              raise SystemExit('Expected dump-mode wait block was not found in cocbot/loop.py')
-          text = text.replace(old, new)
+          text, count = re.subn(
+              r'        session\.break_blocked = False\n        _step\("Dump mode: wait for end"\)\n.*?        logger\.info\("=== Dump attack cycle complete ==="\)\n        return\n',
+              new,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit('Could not replace dump-mode wait block in cocbot/loop.py')
           loop.write_text(text, encoding='utf-8')
 
           init = root / 'cocbot' / '__init__.py'
           text = init.read_text(encoding='utf-8')
-          text = re.sub(r'__version__\s*=\s*"[^"]+"', '__version__ = "1.4.0"', text)
+          text, count = re.subn(r'__version__\s*=\s*"[^"]+"', '__version__ = "1.4.0"', text, count=1)
+          if count != 1:
+              raise SystemExit('Could not update version in cocbot/__init__.py')
           init.write_text(text, encoding='utf-8')
 
           workflow = root / '.github' / 'workflows' / 'apply-broom-witch-patch.yml'
