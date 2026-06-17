@@ -1,0 +1,82 @@
+name: Apply army refactor
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-army-refactor.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refactor-build-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply refactor patch
+        run: python .github/scripts/apply_army_refactor.py
+
+      - name: Validate source and tests
+        shell: pwsh
+        run: |
+          python -m py_compile cocbot/army.py cocbot/event_broom.py cocbot/config.py cocbot/updater.py cocbot/actions.py cocbot/loop.py cocbot/__main__.py cocbot/__init__.py gui.py test_event_broom.py
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt pytest
+          pytest -q test_event_broom.py
+
+      - name: Commit refactor
+        id: commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+          git add cocbot/army.py cocbot/config.py cocbot/event_broom.py cocbot/actions.py cocbot/loop.py cocbot/__main__.py cocbot/__init__.py cocbot/updater.py gui.py build.bat CoCBot.spec .github/workflows/build.yml test_event_broom.py .github/workflows/apply-army-refactor.yml .github/scripts/apply_army_refactor.py
+          git commit -m "refactor: remove banner, configurable armies, Broom Witch + Warden support, fixed executable naming"
+          git push
+          $sha = git rev-parse HEAD
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build fixed-name Windows package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install pyinstaller
+          pyinstaller --noconfirm --clean --onedir --windowed --name Coc-farm --add-data "templates;templates" --collect-all customtkinter --collect-all PIL --hidden-import customtkinter --hidden-import PIL.Image --hidden-import cv2 gui.py
+          if (!(Test-Path "dist/Coc-farm/Coc-farm.exe")) { throw "dist/Coc-farm/Coc-farm.exe was not created" }
+          Compress-Archive -Path "dist/Coc-farm/*" -DestinationPath "Coc-farm.zip" -Force
+
+      - name: Publish v1.5.0 release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '${{ steps.commit.outputs.sha }}'
+          $notes = @'
+          ## v1.5.0 Refactor
+
+          - Removed the startup GIF/banner path for fast launch.
+          - Added config-driven army presets: `broom_witch` and `electro_dragon`.
+          - Added Broom Witch + Grand Warden event deployment with Rage and Eternal Tome timing.
+          - Added GUI army preset switcher.
+          - Fixed build naming permanently: archive `Coc-farm.zip`, folder `Coc-farm`, executable `Coc-farm.exe`.
+
+          Download `Coc-farm.zip`, extract it, and run `Coc-farm.exe` inside the extracted folder.
+          '@
+          if (gh release view v1.5.0 *> $null) {
+            gh release edit v1.5.0 --target $sha --title "v1.5.0 - Army Presets and Fixed Naming" --notes $notes
+          } else {
+            gh release create v1.5.0 --target $sha --title "v1.5.0 - Army Presets and Fixed Naming" --notes $notes
+          }
+          gh release upload v1.5.0 "Coc-farm.zip" --clobber
