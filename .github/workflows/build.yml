@@ -1,17 +1,23 @@
-name: Build CoCBot.exe
+name: Build Coc Farm Windows Package
 
-# Builds the Windows app and publishes it as a GitHub Release whenever a
-# version tag (e.g. v1.3.1) is pushed. The in-app Update button downloads
-# the CoCBot.exe attached to the latest release.
+# Builds a stable Windows folder package and publishes it to GitHub Releases.
+# This intentionally uses PyInstaller --onedir instead of --onefile. One-file
+# builds extract Python into a temporary _MEI folder at launch and can fail with
+# missing python311.dll/python312.dll after in-app updates or antivirus cleanup.
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}   # lets you trigger a build manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create/update, for example v1.4.2"
+        required: false
+        default: ""
 
 permissions:
-  contents: write          # needed to create the Release
+  contents: write
 
 jobs:
   build:
@@ -23,19 +29,80 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+
+      - name: Validate source
+        shell: pwsh
+        run: |
+          python -m py_compile cocbot/event_broom.py cocbot/config.py cocbot/updater.py cocbot/actions.py cocbot/loop.py cocbot/__init__.py gui.py test_event_broom.py
 
       - name: Install dependencies
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
 
-      - name: Build CoCBot.exe
-        run: pyinstaller --noconfirm --clean CoCBot.spec
+      - name: Build stable Windows package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onedir `
+            --windowed `
+            --name cocbot `
+            --add-data "templates;templates" `
+            --collect-all customtkinter `
+            --collect-all PIL `
+            --hidden-import customtkinter `
+            --hidden-import PIL.Image `
+            --hidden-import cv2 `
+            gui.py
+          if (!(Test-Path "dist/cocbot/cocbot.exe")) {
+            throw "Build failed: dist/cocbot/cocbot.exe was not created"
+          }
 
-      - name: Publish release with the exe
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/CoCBot.exe
-          generate_release_notes: true
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+          } elseif ("${{ inputs.tag }}") {
+            $tag = "${{ inputs.tag }}"
+          } else {
+            $version = python -c "import re; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('cocbot/__init__.py', encoding='utf-8').read()).group(1))"
+            $tag = "v$version"
+          }
+          if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "zip=cocbot-windows-$tag.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/cocbot/*" -DestinationPath "${{ steps.tag.outputs.zip }}" -Force
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "${{ steps.tag.outputs.tag }}"
+          $zip = "${{ steps.tag.outputs.zip }}"
+          $notes = @"
+          ## Windows Package
+
+          Download `$zip`, extract it, and run `cocbot.exe` inside the extracted folder.
+
+          This build uses stable folder packaging instead of fragile one-file packaging to avoid missing Python DLL / `_MEI` temp extraction crashes.
+          "@
+          if (gh release view $tag *> $null) {
+            gh release edit $tag --target "${{ github.sha }}" --title "$tag" --notes $notes
+          } else {
+            gh release create $tag --target "${{ github.sha }}" --title "$tag" --notes $notes
+          }
+          gh release upload $tag $zip --clobber
