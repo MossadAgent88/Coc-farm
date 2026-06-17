@@ -45,8 +45,10 @@ class BotConfig:
     debug_screenshots: bool = False
     dump_mode: bool = False
     # Broom Witch event mode tuning. These defaults are intentionally bounded:
-    # one known troop-bar slot, controlled waves, and no rapid-fire tapping.
-    broom_witch_slot_x: int = 250
+    # bounded troop-bar slots, controlled waves, and no rapid-fire tapping.
+    # Use a comma-separated list because settings.json stores GUI values as text.
+    broom_witch_slot_xs: str = "250,330,410,490"
+    broom_witch_slot_x: int = 250  # legacy fallback if slot_xs is empty
     broom_witch_waves: int = 3
     broom_witch_tap_delay: float = 0.07
     broom_witch_wave_pause: float = 0.75

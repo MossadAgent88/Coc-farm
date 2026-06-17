@@ -85,7 +85,7 @@ def deploy_broom_witches() -> None:
     cuts tap volume by an order of magnitude compared with generic dump mode
     while preserving human-like timing.
     """
-    slot_x = int(cfg.broom_witch_slot_x)
+    slot_xs = _configured_slot_xs()
     waves = max(1, int(cfg.broom_witch_waves))
     tap_delay = max(MIN_SAFE_TAP_DELAY, float(cfg.broom_witch_tap_delay))
     wave_pause = max(0.35, float(cfg.broom_witch_wave_pause))
@@ -99,16 +99,19 @@ def deploy_broom_witches() -> None:
     emit(
         "broom_witch_deploy_start",
         waves=waves,
-        slot_x=slot_x,
+        slot_xs=slot_xs,
         estimated_taps=estimated_broom_witch_taps(waves),
     )
 
     for wave in range(waves):
         check_deadline("Broom Witch deploy")
-        tap(slot_x, TROOP_BAR_Y, delay=tap_delay)
-        for x, y in broom_witch_wave_points(wave):
-            jx, jy = _jitter_point(x, y)
-            tap(jx, jy, delay=tap_delay)
+        points = broom_witch_wave_points(wave)
+        for slot_x in slot_xs:
+            check_deadline("Broom Witch deploy")
+            tap(slot_x, TROOP_BAR_Y, delay=tap_delay)
+            for x, y in points:
+                jx, jy = _jitter_point(x, y)
+                tap(jx, jy, delay=tap_delay)
         if wave != waves - 1:
             time.sleep(wave_pause + random.uniform(0.0, 0.25))
 

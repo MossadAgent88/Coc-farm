@@ -50,6 +50,7 @@ DEFAULTS = {
     "splash_enabled": True,
     "debug_screenshots": False,
     "dump_mode": False,
+    "broom_witch_slot_xs": "250,330,410,490",
 }
 
 ACCENT = "#4488ff"
@@ -102,6 +103,7 @@ if _icon_path.exists():
 
 bot_process = None
 _start_time = None
+_stop_in_progress = False
 
 
 # ── Bot control ──
@@ -249,31 +251,55 @@ def _on_bot_exit():
         stop_btn.configure(state="disabled")
 
 
-def stop_bot():
-    global bot_process, _start_time
-    if not bot_process or bot_process.poll() is not None:
-        status_label.configure(text="Bot idle", text_color=RED)
-        return
+def _finish_stop_ui(proc=None, label="Bot stopped"):
+    """Return the control panel to idle state after a background stop."""
+    global bot_process, _start_time, _stop_in_progress
+    if proc is None or bot_process is proc or (bot_process and bot_process.poll() is not None):
+        bot_process = None
+        _start_time = None
+    _stop_in_progress = False
+    status_label.configure(text=label, text_color=RED)
+    start_btn.configure(state="normal")
+    stop_btn.configure(text="STOP", state="disabled")
 
-    # Kill entire process tree (bot + any ADB subprocesses)
+
+def _stop_worker(proc):
+    """Terminate the bot process tree without freezing the GUI thread."""
     try:
         subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(bot_process.pid)],
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
             capture_output=True,
             timeout=5,
         )
     except Exception:
-        bot_process.kill()
-    bot_process.wait()
+        try:
+            proc.kill()
+        except Exception:
+            pass
     try:
-        bot_process.stdout.close()
+        proc.wait(timeout=2)
     except Exception:
         pass
-    bot_process = None
-    _start_time = None
-    status_label.configure(text="Bot stopped", text_color=RED)
-    start_btn.configure(state="normal")
-    stop_btn.configure(state="disabled")
+    try:
+        if proc.stdout:
+            proc.stdout.close()
+    except Exception:
+        pass
+    root.after(0, _finish_stop_ui, proc, "Bot stopped")
+
+
+def stop_bot():
+    global _stop_in_progress
+    if not bot_process or bot_process.poll() is not None:
+        _finish_stop_ui(label="Bot idle")
+        return
+    if _stop_in_progress:
+        return
+    _stop_in_progress = True
+    status_label.configure(text="Stopping bot...", text_color=YELLOW)
+    stop_btn.configure(text="STOPPING...", state="disabled")
+    start_btn.configure(state="disabled")
+    threading.Thread(target=_stop_worker, args=(bot_process,), daemon=True).start()
 
 
 # ── Helper: tooltip ──
@@ -418,7 +444,7 @@ def _apply_update(info):
             from cocbot.updater import download_and_apply
 
             download_and_apply(info["url"])
-            root.after(0, lambda: (stop_bot(), root.destroy()))
+            root.after(0, _request_close_after_update)
         except Exception as e:
             root.after(
                 0,
@@ -1071,8 +1097,18 @@ log_output.configure(state="disabled")
 # ══════════════════════════════════════════════════════════════════
 # SPLASH SCREEN
 # ══════════════════════════════════════════════════════════════════
-root.protocol("WM_DELETE_WINDOW", lambda: (stop_bot(), root.destroy()))
-atexit.register(stop_bot)
+def _request_close_after_update():
+    stop_bot()
+    root.after(250, root.destroy)
+
+
+def _on_window_close():
+    stop_bot()
+    root.after(250, root.destroy)
+
+
+root.protocol("WM_DELETE_WINDOW", _on_window_close)
+atexit.register(lambda: None)
 
 
 def _play_splash():
