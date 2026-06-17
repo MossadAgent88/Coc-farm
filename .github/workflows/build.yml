@@ -33,7 +33,7 @@ jobs:
       - name: Validate source
         shell: pwsh
         run: |
-          python -m py_compile cocbot/event_broom.py cocbot/config.py cocbot/updater.py cocbot/actions.py cocbot/loop.py cocbot/__init__.py gui.py test_event_broom.py
+          python -m py_compile cocbot/army.py cocbot/event_broom.py cocbot/config.py cocbot/updater.py cocbot/actions.py cocbot/loop.py cocbot/__init__.py gui.py test_event_broom.py
 
       - name: Install dependencies
         shell: pwsh
