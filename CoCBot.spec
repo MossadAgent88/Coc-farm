@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for CoC Bot.
 # Build with:  pyinstaller CoCBot.spec   (build.bat does this for you)
-# Produces a single standalone exe at: dist\CoCBot.exe
+# Produces a stable folder package at: dist\Coc-farm\Coc-farm.exe
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
@@ -36,11 +36,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
-    name="CoCBot",
+    name="Coc-farm",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -53,4 +50,15 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon="templates/logo.ico",
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="Coc-farm",
 )

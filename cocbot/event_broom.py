@@ -18,6 +18,13 @@ import time
 from loguru import logger
 
 from cocbot.config import cfg
+from cocbot.army import (
+    activate_warden_abilities,
+    configured_broom_witch_slots,
+    deploy_heroes,
+    deploy_rage_spells,
+    get_army_config,
+)
 from cocbot.io import tap
 from cocbot.plans import TROOP_BAR_Y
 from cocbot.session import check_deadline, emit
@@ -56,33 +63,8 @@ def _jitter_point(x: int, y: int, radius: int = 10) -> tuple[int, int]:
 
 
 def _configured_slot_xs() -> list[int]:
-    """Return bounded troop-bar X coordinates for event deployment.
-
-    Broom Witch/event armies can occupy multiple troop-bar slots. The previous
-    v1.4.1 commit changed deployment to call this helper but failed to commit
-    the helper itself, causing ``NameError: _configured_slot_xs`` at runtime.
-
-    Values come from ``cfg.broom_witch_slot_xs`` as a comma/semicolon separated
-    string, with ``cfg.broom_witch_slot_x`` retained as a legacy fallback.
-    Coordinates are bounded to the visible troop bar area and deduplicated.
-    """
-    raw = str(getattr(cfg, "broom_witch_slot_xs", "") or "")
-    slots: list[int] = []
-    for chunk in raw.replace(";", ",").split(","):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        try:
-            x = int(float(chunk))
-        except ValueError:
-            logger.warning(f"Ignoring invalid Broom Witch slot x={chunk!r}")
-            continue
-        if 120 <= x <= 1510 and x not in slots:
-            slots.append(x)
-
-    if not slots:
-        slots = [int(getattr(cfg, "broom_witch_slot_x", 250))]
-    return slots[:8]
+    """Backward-compatible wrapper for tests and older callers."""
+    return configured_broom_witch_slots()
 
 
 def broom_witch_wave_points(wave: int) -> list[tuple[int, int]]:
@@ -116,6 +98,7 @@ def deploy_broom_witches() -> None:
     then deploys each slot across perimeter Wizard Tower pressure lanes. This
     keeps deployment bounded while still emptying multiple event troop stacks.
     """
+    army_config = get_army_config("broom_witch")
     slot_xs = _configured_slot_xs()
     waves = max(1, int(cfg.broom_witch_waves))
     tap_delay = max(MIN_SAFE_TAP_DELAY, float(cfg.broom_witch_tap_delay))
@@ -143,8 +126,13 @@ def deploy_broom_witches() -> None:
             for x, y in points:
                 jx, jy = _jitter_point(x, y)
                 tap(jx, jy, delay=tap_delay)
+        if wave == 0:
+            deploy_heroes(army_config)
+        if wave == 1 or (waves == 1 and wave == 0):
+            deploy_rage_spells(army_config)
         if wave != waves - 1:
             time.sleep(wave_pause + random.uniform(0.0, 0.25))
 
+    activate_warden_abilities(army_config, timing="core")
     logger.info("Broom Witch deploy complete")
-    emit("broom_witch_deploy_complete", waves=waves, slot_xs=slot_xs)
+    emit("broom_witch_deploy_complete", waves=waves, slot_xs=slot_xs, preset=army_config["name"])

@@ -41,12 +41,12 @@ def _choose_asset(assets: list[dict]) -> dict | None:
     zip_assets = [a for a in assets if a.get("name", "").lower().endswith(".zip")]
     for asset in zip_assets:
         name = asset.get("name", "").lower()
-        if "windows" in name or "cocbot" in name or "ghostfarm" in name:
+        if name == "coc-farm.zip" or "windows" in name or "cocbot" in name or "ghostfarm" in name or "coc-farm" in name:
             return {**asset, "kind": "zip"}
     exe_assets = [a for a in assets if a.get("name", "").lower().endswith(".exe")]
     for asset in exe_assets:
         name = asset.get("name", "").lower()
-        if name in {"cocbot.exe", "ghostfarm.exe"} or "cocbot" in name or "ghostfarm" in name:
+        if name in {"coc-farm.exe", "cocbot.exe", "ghostfarm.exe"} or "coc-farm" in name or "cocbot" in name or "ghostfarm" in name:
             return {**asset, "kind": "exe"}
     return None
 
@@ -96,7 +96,7 @@ def _write_and_launch_helper(script: str, folder: Path) -> None:
 
 
 def _apply_exe(download_url: str, folder: Path, current_exe: Path, timeout: int) -> None:
-    new_exe = folder / "cocbot_new.exe"
+    new_exe = folder / "Coc-farm_new.exe"
     _download(download_url, new_exe, timeout)
     script = (
         "@echo off\r\n"
@@ -114,7 +114,7 @@ def _apply_exe(download_url: str, folder: Path, current_exe: Path, timeout: int)
 
 
 def _apply_zip(download_url: str, folder: Path, current_exe: Path, timeout: int) -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="cocbot_update_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="coc_farm_update_"))
     zip_path = temp_root / "update.zip"
     extract_dir = temp_root / "payload"
     _download(download_url, zip_path, timeout)

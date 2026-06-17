@@ -47,9 +47,10 @@ DEFAULTS = {
     "post_attack_max": "20",
     "fatigue_ramp": "120",
     "fatigue_max": "2.0",
-    "splash_enabled": True,
+    "splash_enabled": False,
     "debug_screenshots": False,
     "dump_mode": False,
+    "army_preset": "broom_witch",
     "broom_witch_slot_xs": "250,330,410,490",
 }
 
@@ -647,6 +648,13 @@ ctk.CTkSegmentedButton(
     font=("Segoe UI", 12),
 ).pack(side="left")
 
+
+r = _row(atk_card)
+ctk.CTkLabel(r, text="Army preset", font=("Segoe UI", 13)).pack(side="left", padx=(0, 6))
+_help_icon(r, "Switches deployment composition without changing code.").pack(side="left", padx=(0, 8))
+army_preset_var = ctk.StringVar(value="broom_witch")
+ctk.CTkOptionMenu(r, values=["broom_witch", "electro_dragon"], variable=army_preset_var, width=170).pack(side="left")
+
 r = _row(atk_card)
 _single_entry(
     r,
@@ -725,14 +733,14 @@ _single_entry(
     "Seconds to wait before reconnecting.",
     width=50,
 ).pack(side="left", padx=(0, ITEM_PAD))
-splash_var = ctk.BooleanVar(value=True)
+splash_var = ctk.BooleanVar(value=False)
 ctk.CTkSwitch(
     r,
-    text="Splash screen",
+    text="Splash disabled",
     variable=splash_var,
     font=("Segoe UI", 13),
 ).pack(side="left", padx=(0, 6))
-_help_icon(r, "Show the splash screen on startup.").pack(
+_help_icon(r, "Startup banner/GIF is disabled for fast launch.").pack(
     side="left",
     padx=(0, ITEM_PAD),
 )
@@ -866,6 +874,7 @@ _SETTING_VARS = {
     "random_events": random_events_var,
     "fatigue": fatigue_var,
     "attack_side": attack_side_var,
+    "army_preset": army_preset_var,
     "min_loot": min_loot_var,
     "min_remaining": min_remaining_var,
     "min_gold": min_gold_var,
@@ -1112,58 +1121,8 @@ atexit.register(lambda: None)
 
 
 def _play_splash():
-    if not splash_var.get():
-        root.deiconify()
-        return
-    splash_path = Path(__file__).parent / "templates" / "splash.gif"
-    if not splash_path.exists():
-        root.deiconify()
-        return
-
-    splash = tk.Toplevel()
-    splash.overrideredirect(True)
-    splash.configure(bg="black")
-    splash.attributes("-topmost", True)
-
-    try:
-        import ctypes
-
-        sw = ctypes.windll.user32.GetSystemMetrics(0)
-        sh = ctypes.windll.user32.GetSystemMetrics(1)
-    except Exception:
-        sw = splash.winfo_screenwidth()
-        sh = splash.winfo_screenheight()
-
-    splash.geometry(f"{sw}x{sh}+0+0")
-    splash.focus_force()
-
-    gif = Image.open(splash_path)
-    total_frames = gif.n_frames
-    scale = min(sw / gif.width, sh / gif.height)
-    nw, nh = int(gif.width * scale), int(gif.height * scale)
-    paste_x, paste_y = (sw - nw) // 2, (sh - nh) // 2
-
-    label = tk.Label(splash, bg="black")
-    label.pack(expand=True)
-
-    splash._current_photo = None
-
-    def animate(idx=0):
-        if idx >= total_frames:
-            splash.destroy()
-            root.deiconify()
-            return
-        gif.seek(idx)
-        raw = gif.copy()
-        scaled = raw.resize((nw, nh), Image.LANCZOS)
-        canvas = Image.new("RGB", (sw, sh), "black")
-        canvas.paste(scaled, (paste_x, paste_y))
-        splash._current_photo = ImageTk.PhotoImage(canvas)
-        label.config(image=splash._current_photo)
-        duration = gif.info.get("duration", 50)
-        splash.after(duration, animate, idx + 1)
-
-    animate()
+    """Splash screen intentionally disabled for fast, clean startup."""
+    root.deiconify()
 
 
 def _run_bot_cli():

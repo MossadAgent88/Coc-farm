@@ -16,6 +16,7 @@ from loguru import logger
 
 from cocbot.config import cfg
 from cocbot.debug import dbg
+from cocbot.army import active_preset_name, get_army_config
 from cocbot.event_broom import deploy_broom_witches
 from cocbot.io import (
     capture_screenshot,
@@ -793,16 +794,27 @@ _DUMP_PERIMETER = (
 _DUMP_SLOT_XS = tuple(range(150, 1510, 80))
 
 
-def deploy_dump():
-    """Deploy the active event army using the optimized Broom Witch plan.
+def _deploy_generic_dump():
+    """Fallback dump: empty visible slots across the perimeter using safe taps."""
+    logger.info("Generic dump deploy: emptying configured/visible army onto base")
+    for sx in _DUMP_SLOT_XS:
+        check_deadline("Dump deploy")
+        tap(sx, TROOP_BAR_Y, delay=0.04)
+        points = list(_DUMP_PERIMETER)
+        random.shuffle(points)
+        for x, y in points:
+            tap(x + random.randint(-8, 8), y + random.randint(-8, 8), delay=0.07)
+        tap(sx, TROOP_BAR_Y, delay=0.04)
 
-    The old dump mode swept every troop-bar slot across the whole perimeter,
-    producing hundreds of ADB taps before the battle could produce useful
-    event points. Broom Witch farming is now bounded to the configured troop
-    slot and deploys timed waves into Wizard Tower pressure lanes. This keeps
-    tap volume low, preserves human-safe delays, and improves crystals/minute.
-    """
-    deploy_broom_witches()
+
+def deploy_dump():
+    """Deploy the active army preset for event/dump mode."""
+    preset = active_preset_name()
+    logger.info(f"Dump mode using army preset: {preset}")
+    if preset == "broom_witch":
+        deploy_broom_witches()
+    else:
+        _deploy_generic_dump()
 
 
 def deploy_troops(plan: DeployPlan):
@@ -818,6 +830,12 @@ def deploy_troops(plan: DeployPlan):
       6. Totem spells at totem_points + 4 extra taps in totem zones
       7. Re-center camera
     """
+    army_config = get_army_config()
+    if army_config["name"] == "broom_witch":
+        logger.info("Normal attack using Broom Witch preset")
+        deploy_broom_witches()
+        return
+
     screen = capture_screenshot()
     slots = find_troop_slots(screen)
 
@@ -825,7 +843,7 @@ def deploy_troops(plan: DeployPlan):
         logger.error("No troops found in bar!")
         return
 
-    logger.info(f"Troop positions: {slots} | Attacking from {plan.name}")
+    logger.info(f"Troop positions: {slots} | Attacking from {plan.name} | preset={army_config['name']}")
 
     # 1. Queen at attack corner + activate ability
     if _tap_troop(slots, "queen"):

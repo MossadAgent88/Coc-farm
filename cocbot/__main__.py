@@ -16,7 +16,7 @@ def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "test"
 
     if command in ("--version", "-V", "version"):
-        print(f"cocbot v{__version__}")
+        print(f"[INFO] CoC Bot v{__version__} starting...")
         return
 
     if command == "loot_debug":

@@ -39,6 +39,7 @@ def test_deploy_uses_safe_delay_and_all_slots(monkeypatch):
     taps = []
     sleeps = []
     events = []
+    support_calls = []
 
     monkeypatch.setattr(event_broom.cfg, "broom_witch_slot_xs", "250,330")
     monkeypatch.setattr(event_broom.cfg, "broom_witch_waves", 2)
@@ -49,6 +50,9 @@ def test_deploy_uses_safe_delay_and_all_slots(monkeypatch):
     monkeypatch.setattr(event_broom.time, "sleep", lambda seconds: sleeps.append(seconds))
     monkeypatch.setattr(event_broom, "check_deadline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(event_broom, "emit", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(event_broom, "deploy_heroes", lambda *_args, **_kwargs: support_calls.append("warden"))
+    monkeypatch.setattr(event_broom, "deploy_rage_spells", lambda *_args, **_kwargs: support_calls.append("rage"))
+    monkeypatch.setattr(event_broom, "activate_warden_abilities", lambda *_args, **_kwargs: support_calls.append("tome"))
 
     event_broom.deploy_broom_witches()
 
@@ -56,6 +60,7 @@ def test_deploy_uses_safe_delay_and_all_slots(monkeypatch):
     assert len(slot_taps) == 4  # 2 slots * 2 waves
     assert all(delay >= event_broom.MIN_SAFE_TAP_DELAY for *_xy, delay in taps)
     assert len(sleeps) == 1
+    assert support_calls == ["warden", "rage", "tome"]
     assert events[0][0][0] == "broom_witch_deploy_start"
     assert events[-1][0][0] == "broom_witch_deploy_complete"
 

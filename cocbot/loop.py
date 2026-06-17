@@ -106,7 +106,7 @@ for _old_log in Path(".").glob("cocbot.*.log"):
     except OSError:
         pass
 
-logger.info(f"CoC bot v{__version__}")
+logger.info(f"[INFO] CoC Bot v{__version__} starting...")
 emit("version", version=__version__)
 
 
