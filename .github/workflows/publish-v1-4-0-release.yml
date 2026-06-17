@@ -1,0 +1,55 @@
+name: Publish v1.4.0 release
+
+on:
+  push:
+    paths:
+      - .github/workflows/publish-v1-4-0-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TARGET_SHA="3b86143732151434751505cd4cfbab1bd09e6610"
+          NOTES=$(cat <<'EOF'
+          ## Broom Witch event farming optimization
+
+          - Replaces generic dump-mode perimeter sweeping with the optimized Broom Witch deployment plan.
+          - Deploys timed Broom Witch waves toward Wizard Tower pressure lanes instead of tapping every troop slot.
+          - Adds a configurable crystal collection window via `broom_witch_battle_seconds`.
+          - Skips donation/random-event side work during dump-mode event farming to improve crystals per minute.
+          - Bumps bot version to `1.4.0`.
+
+          Validation: Python syntax validation passed for the changed bot modules and Broom Witch tests.
+          EOF
+          )
+          if gh release view v1.4.0 >/dev/null 2>&1; then
+            gh release edit v1.4.0 --target "$TARGET_SHA" --title "v1.4.0 - Broom Witch Event Farming" --notes "$NOTES"
+          else
+            gh release create v1.4.0 --target "$TARGET_SHA" --title "v1.4.0 - Broom Witch Event Farming" --notes "$NOTES"
+          fi
+      - name: Remove one-time workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/publish-v1-4-0-release.yml
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+          git add .github/workflows/publish-v1-4-0-release.yml
+          git commit -m "Remove one-time v1.4.0 release workflow"
+          git push
