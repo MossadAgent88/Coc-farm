@@ -15,7 +15,9 @@ Normal users should download the Windows build from GitHub Releases:
 
 **[Download the latest Windows release](https://github.com/MossadAgent88/Coc-farm/releases/latest)**
 
-You do **not** need Python, pip, Git, Visual Studio, or terminal commands when using the release ZIP.
+Download `CoC-Farm-Bot-Windows.zip`, extract it, and run `CoC Farm Bot.exe`.
+
+Normal users do **not** need Python, pip, Git, Visual Studio, or terminal commands when using the release ZIP.
 
 ## Quick Start
 
@@ -199,11 +201,12 @@ Requirements:
 Build:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install pyinstaller
-.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean CoCBot.spec
+python -m venv .venv-build
+.\.venv-build\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv-build\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv-build\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv-build\Scripts\python.exe -c "import webview; import clr; print('webview/pythonnet import OK')"
+.\.venv-build\Scripts\python.exe -m PyInstaller --noconfirm --clean CoCBot.spec
 ```
 
 The built app is created at:
@@ -223,8 +226,9 @@ To create a clean release ZIP locally:
 For maintainers:
 
 1. Merge release changes into `main`.
-2. Create and push a tag, for example `v1.0.0`.
-3. The Windows release workflow builds the `.exe`, creates `CoC-Farm-Bot-Windows.zip`, writes a checksum file, and publishes the GitHub Release.
+2. Build and test the release ZIP from a clean extracted folder.
+3. Create or update the GitHub Release asset only after the EXE opens.
+4. Attach `CoC-Farm-Bot-Windows.zip` and `CoC-Farm-Bot-Windows.zip.sha256`.
 
 Manual tag command:
 

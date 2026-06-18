@@ -1,6 +1,6 @@
 # CoC Farm Bot v1.0.0 - Windows EXE Release
 
-This release provides the polished Windows ZIP package and beginner-friendly documentation for CoC Farm Bot.
+This release provides the verified Windows ZIP package and beginner-friendly documentation for CoC Farm Bot.
 
 ## What Changed
 
@@ -10,6 +10,7 @@ This release provides the polished Windows ZIP package and beginner-friendly doc
 - Added Bases and Armies libraries for Clash links.
 - Connected Manual tools including Open Game, Return Home, Screenshot, Detect Loot, Manual Attack, and Reload Config.
 - Added LDPlayer startup support through the existing ADB/ldconsole path system.
+- Fixed Windows EXE packaging for pywebview/pythonnet so `Python.Runtime.dll` and clr-loader runtime files are bundled together.
 - Added beginner-friendly README, quick-start guide, release notes, and GitHub Actions release packaging.
 
 ## Main Features
@@ -20,6 +21,7 @@ This release provides the polished Windows ZIP package and beginner-friendly doc
 - Save and copy base links.
 - Save and copy army links.
 - Take emulator screenshots.
+- Run manual actions: Open Game, Screenshot, and Return Home.
 - Reload settings from the existing config system.
 
 ## Install
@@ -28,7 +30,7 @@ This release provides the polished Windows ZIP package and beginner-friendly doc
 2. Extract it to a folder such as `C:\CoC-Farm-Bot`.
 3. Run `CoC Farm Bot.exe`.
 
-No Python, pip, Git, or developer tools are required for the release ZIP.
+No Python, pip, Git, terminal commands, or developer tools are required for the release ZIP.
 
 ## Start
 
@@ -60,7 +62,8 @@ LDCONSOLE_PATH=C:\path\to\LDPlayer\ldconsole.exe
 - **Open Game fails:** verify LDPlayer is installed, ADB debugging is enabled, and Clash of Clans is installed.
 - **Screenshot fails:** make sure LDPlayer is running and the game is open.
 - **Detection fails:** confirm the emulator resolution is exactly `1920 x 1080`.
-- **Windows SmartScreen warning:** the app is not code-signed. Only run it if downloaded from this repository's GitHub Releases page.
+- **Windows SmartScreen or antivirus warning:** the app is not code-signed. Only run it if downloaded from this repository's GitHub Releases page.
+- **LDPlayer path issue:** if LDPlayer is installed in a custom location, set `ADB_PATH` and `LDCONSOLE_PATH` to the matching `adb.exe` and `ldconsole.exe`.
 - **Settings issue:** close the app, move `settings.json` aside, and restart to use defaults.
 
 ## Disclaimer
