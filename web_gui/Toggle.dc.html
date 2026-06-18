@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<button type="button" onClick="{{ onToggle }}" aria-pressed="{{ on }}" style="position:relative; flex:none; width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0; transition:background .2s ease, box-shadow .2s ease; outline:none; background: {{ trackBg }}; box-shadow: {{ trackGlow }};" style-hover="filter:brightness(1.08);">
+  <span style="position:absolute; top:3px; left:3px; width:17px; height:17px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.45); transition:transform .2s cubic-bezier(.4,0,.2,1); transform: {{ knobX }};"></span>
+</button>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;40px&quot;,&quot;height&quot;:&quot;23px&quot;},&quot;on&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#3d7bff&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;onToggle&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;() =&gt; void&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const on = !!this.props.on;
+    const accent = this.props.accent || '#3d7bff';
+    return {
+      on,
+      onToggle: this.props.onToggle || (() => {}),
+      trackBg: on ? accent : 'rgba(255,255,255,0.12)',
+      trackGlow: on ? `0 0 0 1px ${accent}55, 0 0 10px ${accent}40` : 'inset 0 0 0 1px rgba(255,255,255,0.06)',
+      knobX: on ? 'translateX(17px)' : 'translateX(0)'
+    };
+  }
+}
+</script>
+</body>
+</html>
