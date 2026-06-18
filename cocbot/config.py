@@ -46,18 +46,23 @@ class BotConfig:
     dump_mode: bool = False
     army_preset: str = "broom_witch"
     # Broom Witch event mode tuning. These defaults are intentionally bounded:
-    # bounded troop-bar slots, controlled waves, and no rapid-fire tapping.
+    # one troop-bar slot, fast rounds, and no rapid-fire tapping.
     # Use a comma-separated list because settings.json stores GUI values as text.
-    broom_witch_slot_xs: str = "250,330,410,490"
+    broom_witch_slot_xs: str = "250"
     broom_witch_slot_x: int = 250  # legacy fallback if slot_xs is empty
-    broom_witch_waves: int = 3
+    broom_witch_waves: int = 3  # legacy alias; use broom_witch_max_rounds for new code
+    broom_witch_max_rounds: int = 3
+    broom_witch_taps_per_round: int = 8
     broom_witch_tap_delay: float = 0.07
-    broom_witch_wave_pause: float = 0.75
+    broom_witch_round_delay: float = 0.25
+    broom_witch_wave_pause: float = 0.25  # legacy alias
+    broom_witch_hero_delay: float = 0.15
+    broom_witch_spell_delay: float = 0.12
     broom_witch_battle_seconds: float = 45.0
     warden_slot_x: int = 1370
     rage_slot_x: int = 1290
     rage_spell_count: int = 3
-    warden_tome_delay: float = 8.0
+    warden_tome_delay: float = 3.0
 
 
 def load_config(path: Path = _SETTINGS_FILE) -> BotConfig:
