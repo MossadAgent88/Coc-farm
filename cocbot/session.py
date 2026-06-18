@@ -29,6 +29,12 @@ class BotSession:
     consecutive_unknown_states: int = 0
     # Timestamps of force_restart_coc calls in the last hour.
     recent_restarts: list[float] = None  # type: ignore[assignment]
+    # Battle progress state used by smart auto-end logic.
+    battle_start_time: float = 0.0
+    last_deploy_time: float = 0.0
+    last_progress_time: float = 0.0
+    deployment_finished: bool = False
+    speed_4x_checked: bool = False
 
     def __post_init__(self):
         if self.recent_restarts is None:

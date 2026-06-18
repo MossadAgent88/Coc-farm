@@ -63,6 +63,12 @@ class BotConfig:
     rage_slot_x: int = 1290
     rage_spell_count: int = 3
     warden_tome_delay: float = 3.0
+    auto_end_enabled: bool = True
+    auto_end_min_battle_age: float = 20.0
+    auto_end_min_after_last_deploy: float = 12.0
+    auto_end_no_progress_seconds: float = 15.0
+    auto_end_low_remaining_loot: int = 50_000
+    auto_enable_4x_last_seconds: int = 60
 
 
 def load_config(path: Path = _SETTINGS_FILE) -> BotConfig:

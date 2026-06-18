@@ -489,6 +489,7 @@ def read_loot(screenshot: np.ndarray, label: str = "Loot") -> dict[str, int]:
 
 
 TROOP_NAMES = [
+    "broom_witch",
     "edrag",
     "dragon_rider",
     "baby_dragon",
@@ -585,3 +586,76 @@ def save_screenshot_region(
     output_path = TEMPLATES_DIR / f"{name}.png"
     cv2.imwrite(str(output_path), region)
     logger.info(f"Saved template '{name}' ({w}x{h}) to {output_path}")
+
+
+# Battle HUD helpers. These are intentionally conservative: if the optional
+# templates are not present or confidence is low, return None instead of making a
+# blind decision. The battle loop falls back to elapsed-time estimates where safe.
+SPEED_BUTTON_CENTER = (1845, 590)
+SPEED_BUTTON_REGION = (540, 640, 1785, 1915)  # y1, y2, x1, x2 at 1920x1080
+
+
+def _match_optional_templates(
+    screenshot: np.ndarray,
+    template_names: tuple[str, ...],
+    region: tuple[int, int, int, int],
+    threshold: float = 0.72,
+) -> float:
+    """Return best template confidence for optional templates, or 0.0."""
+    y1, y2, x1, x2 = region
+    search_area = screenshot[y1:y2, x1:x2]
+    if search_area.size == 0:
+        return 0.0
+    gray_area = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
+    best = 0.0
+    for name in template_names:
+        template = _get_template(name, grayscale=True)
+        if template is None:
+            continue
+        h, w = template.shape[:2]
+        if gray_area.shape[0] <= h or gray_area.shape[1] <= w:
+            continue
+        result = cv2.matchTemplate(gray_area, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        best = max(best, float(max_val))
+    return best if best >= threshold else 0.0
+
+
+def detect_battle_speed(screenshot: np.ndarray) -> str | None:
+    """Detect the battle speed button state: "1x", "4x", or None.
+
+    Optional template names:
+    - templates/speed_1x.png or templates/battle_speed_1x.png
+    - templates/speed_4x.png or templates/battle_speed_4x.png
+    """
+    one_x = _match_optional_templates(
+        screenshot,
+        ("speed_1x", "battle_speed_1x", "hud_speed_1x"),
+        SPEED_BUTTON_REGION,
+    )
+    four_x = _match_optional_templates(
+        screenshot,
+        ("speed_4x", "battle_speed_4x", "hud_speed_4x"),
+        SPEED_BUTTON_REGION,
+    )
+    if one_x <= 0.0 and four_x <= 0.0:
+        return None
+    return "4x" if four_x > one_x else "1x"
+
+
+def read_battle_timer_seconds(_screenshot: np.ndarray) -> int | None:
+    """Read remaining battle time in seconds when timer OCR/templates exist.
+
+    Dedicated timer templates are not bundled yet. Returning None is intentional;
+    the battle loop then uses the battle-age fallback.
+    """
+    return None
+
+
+def read_damage_percent(_screenshot: np.ndarray) -> int | None:
+    """Read battle damage percentage when damage OCR/templates exist.
+
+    Dedicated damage templates are not bundled yet. Returning None keeps
+    auto-end driven by remaining-loot progress instead of guessing.
+    """
+    return None

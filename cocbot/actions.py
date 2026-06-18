@@ -46,7 +46,10 @@ from cocbot.vision import (
     find_troop_slots,
     has_chat_notification,
     is_troop_available,
+    read_battle_timer_seconds,
+    read_damage_percent,
     read_loot,
+    detect_battle_speed,
 )
 
 
@@ -707,16 +710,119 @@ def end_battle_and_go_home():
     dismiss_popups()
 
 
-def wait_for_battle_end(timeout: float = 180.0):
-    """Wait for battle to end. Polls for Return Home button with adaptive interval.
+def _loot_total(loot: dict[str, int] | None) -> int | None:
+    """Return total loot from a read_loot dict, or None for invalid OCR reads."""
+    if not loot:
+        return None
+    total = int(loot.get("gold", 0)) + int(loot.get("elixir", 0)) + int(loot.get("dark_elixir", 0))
+    return total if total > 0 else None
 
-    Also monitors remaining loot — if it drops below cfg.min_remaining,
-    surrenders early to save time.
-    """
+
+def _filtered_remaining_loot(loot: dict[str, int] | None) -> int | None:
+    """Return the remaining-loot number used for early-end decisions."""
+    if not loot:
+        return None
+    has_resource_filter = cfg.min_gold > 0 or cfg.min_elixir > 0 or cfg.min_de > 0
+    if not has_resource_filter:
+        return _loot_total(loot)
+    remaining = 0
+    if cfg.min_gold > 0:
+        remaining += int(loot.get("gold", 0))
+    if cfg.min_elixir > 0:
+        remaining += int(loot.get("elixir", 0))
+    if cfg.min_de > 0:
+        remaining += int(loot.get("dark_elixir", 0))
+    return remaining if remaining > 0 else None
+
+
+def _should_auto_end_battle(
+    *,
+    now: float,
+    battle_start_time: float,
+    last_deploy_time: float,
+    last_progress_time: float,
+    deployment_finished: bool,
+    remaining_loot: int | None,
+) -> tuple[bool, str]:
+    """Decide whether the current battle has stopped being useful."""
+    if not bool(getattr(cfg, "auto_end_enabled", True)):
+        return False, "disabled"
+    if not deployment_finished:
+        return False, "deployment_not_finished"
+    battle_age = now - battle_start_time
+    if battle_age < float(getattr(cfg, "auto_end_min_battle_age", 20.0)):
+        return False, "battle_too_young"
+    if now - last_deploy_time < float(getattr(cfg, "auto_end_min_after_last_deploy", 12.0)):
+        return False, "recent_deploy"
+    low_remaining = (
+        remaining_loot is not None
+        and remaining_loot <= int(getattr(cfg, "auto_end_low_remaining_loot", 50_000))
+    )
+    no_progress = now - last_progress_time >= float(getattr(cfg, "auto_end_no_progress_seconds", 15.0))
+    if low_remaining:
+        return True, "low_remaining_loot"
+    if no_progress:
+        return True, "no_progress"
+    return False, "still_progressing"
+
+
+def _maybe_enable_4x(screen, remaining_seconds: int | None) -> bool:
+    """Enable 4x during the final battle minute when the HUD says 1x."""
+    if remaining_seconds is None:
+        return False
+    threshold = int(getattr(cfg, "auto_enable_4x_last_seconds", 60))
+    if threshold <= 0 or remaining_seconds > threshold:
+        return False
+    speed = detect_battle_speed(screen)
+    if speed == "4x":
+        logger.debug("Battle speed already 4x")
+        return False
+    if speed != "1x":
+        logger.debug("Battle speed unreadable; not tapping speed button blindly")
+        return False
+    tap(1845 + random.randint(-8, 8), 590 + random.randint(-8, 8), delay=0.05)
+    logger.info("Enabled 4x battle speed for final {}s", threshold)
+    emit("battle_speed_4x_enabled", remaining_seconds=int(remaining_seconds))
+    return True
+
+
+def _note_progress(
+    *,
+    remaining_loot: int | None,
+    previous_remaining_loot: int | None,
+    damage_percent: int | None,
+    previous_damage_percent: int | None,
+) -> bool:
+    """Return True when loot decreased or damage increased."""
+    loot_progress = (
+        remaining_loot is not None
+        and previous_remaining_loot is not None
+        and remaining_loot < previous_remaining_loot
+    )
+    damage_progress = (
+        damage_percent is not None
+        and previous_damage_percent is not None
+        and damage_percent > previous_damage_percent
+    )
+    return loot_progress or damage_progress
+
+
+def wait_for_battle_end(timeout: float = 180.0):
+    """Wait for battle end with 4x support and smart auto-end."""
     logger.info("Waiting for battle to end...")
-    start = time.time()
-    while time.time() - start < timeout:
+    battle_start_time = time.time()
+    session.battle_start_time = battle_start_time
+    session.deployment_finished = True
+    if not session.last_deploy_time:
+        session.last_deploy_time = battle_start_time
+    session.last_progress_time = battle_start_time
+    session.speed_4x_checked = False
+    previous_remaining_loot: int | None = None
+    previous_damage_percent: int | None = None
+    while time.time() - battle_start_time < timeout:
         check_deadline("Battle end")
+        now = time.time()
+        elapsed = now - battle_start_time
         screen = capture_screenshot()
         pos = find_template(screen, "5_return_home", threshold=0.7)
         if pos:
@@ -725,54 +831,65 @@ def wait_for_battle_end(timeout: float = 180.0):
             tap(jx, jy)
             time.sleep(2)
             return True
-
-        elapsed = time.time() - start
-        if elapsed > 15:  # Give troops time to start before checking
+        remaining_loot: int | None = None
+        damage_percent: int | None = None
+        if elapsed >= 5.0:
             loot = read_loot(screen, label="Remaining Loot")
-            has_resource_filter = (
-                cfg.min_gold > 0 or cfg.min_elixir > 0 or cfg.min_de > 0
-            )
-            total_all = (
-                int(loot["gold"]) + int(loot["elixir"]) + int(loot["dark_elixir"])
-            )
-            if total_all == 0:
-                # OCR probably failed (0/0/0) — skip this check
-                pass
-            elif has_resource_filter:
-                remaining = 0
-                if cfg.min_gold > 0:
-                    remaining += int(loot["gold"])
-                if cfg.min_elixir > 0:
-                    remaining += int(loot["elixir"])
-                if cfg.min_de > 0:
-                    remaining += int(loot["dark_elixir"])
-                if remaining < cfg.min_remaining:
-                    logger.info(
-                        f"Remaining Loot {remaining:,} "
-                        f"< {cfg.min_remaining:,}, surrendering early"
-                    )
-                    emit("surrender_early", remaining=remaining)
-                    end_battle_and_go_home()
-                    return True
-            elif total_all < cfg.min_remaining:
-                logger.info(
-                    f"Remaining Loot {total_all:,} "
-                    f"< {cfg.min_remaining:,}, surrendering early"
-                )
-                emit("surrender_early", remaining=total_all)
-                end_battle_and_go_home()
-                return True
-
-        time.sleep(3 if elapsed > 60 else 1)
-
+            remaining_loot = _filtered_remaining_loot(loot)
+            damage_percent = read_damage_percent(screen)
+            if _note_progress(
+                remaining_loot=remaining_loot,
+                previous_remaining_loot=previous_remaining_loot,
+                damage_percent=damage_percent,
+                previous_damage_percent=previous_damage_percent,
+            ):
+                session.last_progress_time = now
+            if remaining_loot is not None:
+                previous_remaining_loot = remaining_loot
+            if damage_percent is not None:
+                previous_damage_percent = damage_percent
+        remaining_seconds = read_battle_timer_seconds(screen)
+        if remaining_seconds is None:
+            remaining_seconds = max(0, int(timeout - elapsed))
+        if not session.speed_4x_checked and remaining_seconds <= int(getattr(cfg, "auto_enable_4x_last_seconds", 60)):
+            _maybe_enable_4x(screen, remaining_seconds)
+            session.speed_4x_checked = True
+        should_end, reason = _should_auto_end_battle(
+            now=now,
+            battle_start_time=battle_start_time,
+            last_deploy_time=session.last_deploy_time or battle_start_time,
+            last_progress_time=session.last_progress_time or battle_start_time,
+            deployment_finished=session.deployment_finished,
+            remaining_loot=remaining_loot,
+        )
+        if should_end:
+            logger.info("Auto-ending battle: {}", reason)
+            emit("auto_end_battle", reason=reason, remaining=remaining_loot or 0)
+            end_battle_and_go_home()
+            return True
+        time.sleep(1)
     logger.warning("Battle timeout, tapping to continue...")
     tap(960, 540)
     time.sleep(3)
     return False
 
 
-# ── Troop deployment ──
+# Troop deployment helpers
 
+
+def _mark_deploy_activity() -> None:
+    """Record that a troop/hero/spell/ability deployment action just happened."""
+    session.last_deploy_time = time.time()
+
+
+def _begin_deployment() -> None:
+    session.deployment_finished = False
+    _mark_deploy_activity()
+
+
+def _finish_deployment() -> None:
+    _mark_deploy_activity()
+    session.deployment_finished = True
 
 def _tap_troop(slots: dict[str, int], name: str):
     """Select a troop from the bar by its visual template name."""
@@ -780,6 +897,7 @@ def _tap_troop(slots: dict[str, int], name: str):
         logger.warning(f"Troop '{name}' not found in bar, skipping")
         return False
     tap(slots[name], TROOP_BAR_Y, delay=0.08)
+    _mark_deploy_activity()
     return True
 
 
@@ -800,21 +918,28 @@ def _deploy_generic_dump():
     for sx in _DUMP_SLOT_XS:
         check_deadline("Dump deploy")
         tap(sx, TROOP_BAR_Y, delay=0.04)
+        _mark_deploy_activity()
         points = list(_DUMP_PERIMETER)
         random.shuffle(points)
         for x, y in points:
             tap(x + random.randint(-8, 8), y + random.randint(-8, 8), delay=0.07)
+            _mark_deploy_activity()
         tap(sx, TROOP_BAR_Y, delay=0.04)
+        _mark_deploy_activity()
 
 
 def deploy_dump():
     """Deploy the active army preset for event/dump mode."""
     preset = active_preset_name()
     logger.info(f"Dump mode using army preset: {preset}")
-    if preset == "broom_witch":
-        deploy_broom_witches()
-    else:
-        _deploy_generic_dump()
+    _begin_deployment()
+    try:
+        if preset == "broom_witch":
+            deploy_broom_witches()
+        else:
+            _deploy_generic_dump()
+    finally:
+        _finish_deployment()
 
 
 def deploy_troops(plan: DeployPlan):
@@ -830,10 +955,14 @@ def deploy_troops(plan: DeployPlan):
       6. Totem spells at totem_points + 4 extra taps in totem zones
       7. Re-center camera
     """
+    _begin_deployment()
     army_config = get_army_config()
     if army_config["name"] == "broom_witch":
         logger.info("Normal attack using Broom Witch preset")
-        deploy_broom_witches()
+        try:
+            deploy_broom_witches()
+        finally:
+            _finish_deployment()
         return
 
     screen = capture_screenshot()
@@ -841,6 +970,7 @@ def deploy_troops(plan: DeployPlan):
 
     if not slots:
         logger.error("No troops found in bar!")
+        _finish_deployment()
         return
 
     logger.info(f"Troop positions: {slots} | Attacking from {plan.name} | preset={army_config['name']}")
@@ -986,4 +1116,5 @@ def deploy_troops(plan: DeployPlan):
         540 + random.randint(-50, 50),
         random.randint(250, 400),
     )
+    _finish_deployment()
     logger.info("All troops deployed")
