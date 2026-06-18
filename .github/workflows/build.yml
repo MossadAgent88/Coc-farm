@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v1.0.0"
+        description: "Release tag, for example v1.5.3"
         required: false
-        default: "v1.0.0"
+        default: "v1.5.3"
 
 permissions:
   contents: write
@@ -40,18 +40,7 @@ jobs:
         run: |
           python -m py_compile gui.py bot_controller.py cocbot\io.py cocbot\actions.py cocbot\__main__.py cocbot\loop.py
 
-      - name: Build Windows app and release ZIP
-        shell: pwsh
-        run: |
-          .\scripts\package_windows_release.ps1 -Build -Version "1.0.0" -OutputDir "release"
-          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
-            throw "Missing release ZIP"
-          }
-          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip.sha256")) {
-            throw "Missing checksum"
-          }
-
-      - name: Resolve release tag
+      - name: Resolve release tag and version
         id: release_tag
         shell: pwsh
         run: |
@@ -60,17 +49,31 @@ jobs:
           } elseif ("${{ inputs.tag }}") {
             $tag = "${{ inputs.tag }}"
           } else {
-            $tag = "v1.0.0"
+            $tag = "v1.5.3"
           }
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
+          $version = $tag.TrimStart("v")
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build Windows app and release ZIP
+        shell: pwsh
+        run: |
+          .\scripts\package_windows_release.ps1 -Build -Version "${{ steps.release_tag.outputs.version }}" -OutputDir "release"
+          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
+            throw "Missing release ZIP"
+          }
+          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip.sha256")) {
+            throw "Missing checksum"
+          }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: CoC Farm Bot v1.0.0 - Windows EXE Release
-          body_path: release_assets/RELEASE_NOTES_v1.0.0.md
+          name: CoC Farm Bot v${{ steps.release_tag.outputs.version }}
+          generate_release_notes: true
+          make_latest: true
           files: |
             release/CoC-Farm-Bot-Windows.zip
             release/CoC-Farm-Bot-Windows.zip.sha256
