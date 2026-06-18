@@ -1,0 +1,17 @@
+CoC Farm Bot Changelog
+======================
+
+v1.0.0 - Windows EXE Release
+----------------------------
+
+- Added a Windows release package for normal users.
+- Added the Claude Design GUI as the app frontend.
+- Added live GUI log streaming from the backend bot process.
+- Added Bases and Armies tabs with JSON persistence.
+- Connected Manual actions for Open Game, Return Home, Screenshot, Detect Loot,
+  Manual Attack, and Reload Config.
+- Added LDPlayer startup/open-game flow through the existing ADB/ldconsole system.
+- Added release documentation, quick-start instructions, and GitHub Actions
+  release packaging.
+
+Unofficial project. Not affiliated with Supercell.

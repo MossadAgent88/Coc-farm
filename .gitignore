@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build output
+build/
+dist/
+*.spec.bak
+
+# Local runtime files
+settings.json
+bases.json
+armies.json
+cocbot.log
+*.log
+debug/
+screenshots/
+
+# Local release artifacts
+release/
+*.zip
+*.sha256
+
+# Editor / OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Personal emulator path notes
+*.local
+*.env

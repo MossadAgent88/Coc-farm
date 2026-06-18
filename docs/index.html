@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoC Farm Bot</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070809;
+      --panel: #11151d;
+      --card: #171c26;
+      --text: #eef2f7;
+      --muted: #a8b2c3;
+      --line: rgba(255,255,255,.1);
+      --blue: #3d7bff;
+      --green: #22c277;
+      --red: #ef4757;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(1100px 600px at 75% 0%, #172033 0%, var(--bg) 60%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    a { color: inherit; }
+    .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 72px 0 46px; }
+    .nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; color: var(--muted); }
+    .brand { font-weight: 800; color: var(--text); }
+    .nav a { text-decoration: none; margin-left: 18px; font-size: 14px; }
+    .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 32px; align-items: center; padding-top: 32px; }
+    h1 { font-size: clamp(42px, 7vw, 78px); line-height: .95; margin: 0 0 20px; letter-spacing: -1px; }
+    .lead { color: var(--muted); font-size: 18px; max-width: 650px; }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 10px; text-decoration: none; font-weight: 800; border: 1px solid var(--line); }
+    .primary { background: linear-gradient(180deg, #4a85ff, #3168e0); color: white; border-color: transparent; }
+    .ghost { background: rgba(255,255,255,.05); color: var(--text); }
+    .preview { border: 1px solid var(--line); background: linear-gradient(180deg, rgba(24,28,38,.9), rgba(14,17,24,.9)); border-radius: 20px; min-height: 320px; padding: 18px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+    .fakebar { display: flex; gap: 8px; margin-bottom: 18px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #394253; }
+    .shot { height: 250px; border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(135deg, #121722, #0b0f16); display: grid; place-items: center; color: var(--muted); text-align: center; padding: 24px; }
+    section { padding: 42px 0; }
+    h2 { font-size: 30px; margin: 0 0 18px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { background: rgba(23,28,38,.78); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+    .card h3 { margin: 0 0 8px; font-size: 17px; }
+    .card p { margin: 0; color: var(--muted); }
+    .steps { counter-reset: step; display: grid; gap: 12px; }
+    .step { counter-increment: step; display: flex; gap: 14px; align-items: flex-start; padding: 16px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 14px; }
+    .step::before { content: counter(step); width: 28px; height: 28px; border-radius: 8px; background: var(--blue); display: grid; place-items: center; font-weight: 800; flex: none; }
+    .warn { border-color: rgba(239,71,87,.35); background: rgba(239,71,87,.08); }
+    footer { padding: 40px 0 60px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 36px; }
+    @media (max-width: 820px) {
+      .hero, .grid { grid-template-columns: 1fr; }
+      header { padding-top: 28px; }
+      .nav { align-items: flex-start; gap: 12px; flex-direction: column; }
+      .nav a { margin-left: 0; margin-right: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <div class="brand">CoC Farm Bot</div>
+      <div>
+        <a href="https://github.com/MossadAgent88/Coc-farm/releases/latest">Download</a>
+        <a href="https://github.com/MossadAgent88/Coc-farm">GitHub</a>
+        <a href="#faq">FAQ</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <h1>Windows EXE for Clash farming automation.</h1>
+        <p class="lead">Download the release ZIP, extract it, run the app, connect LDPlayer, and control the bot from a modern desktop GUI. No Python required for normal users.</p>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/MossadAgent88/Coc-farm/releases/latest">Download Latest Release</a>
+          <a class="btn ghost" href="https://github.com/MossadAgent88/Coc-farm#quick-start">Read Quick Start</a>
+        </div>
+      </div>
+      <div class="preview">
+        <div class="fakebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="shot">Screenshot placeholder<br>Add docs/screenshot.png after release capture.</div>
+      </div>
+    </header>
+
+    <section>
+      <h2>Features</h2>
+      <div class="grid">
+        <div class="card"><h3>One Windows package</h3><p>Users download a release ZIP and run the included executable without installing developer tools.</p></div>
+        <div class="card"><h3>LDPlayer control</h3><p>Open Game starts LDPlayer when needed and opens Clash of Clans through the existing ADB flow.</p></div>
+        <div class="card"><h3>Live logs</h3><p>Backend output streams into the GUI so connection and detection errors are visible.</p></div>
+        <div class="card"><h3>Manual tools</h3><p>Return Home, Screenshot, Detect Loot, Manual Attack, and Reload Config are available from the app.</p></div>
+        <div class="card"><h3>Bases and armies</h3><p>Save Clash base and army links locally as JSON and copy or open them from the GUI.</p></div>
+        <div class="card"><h3>Release workflow</h3><p>GitHub Actions can build and publish the Windows ZIP from a version tag.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Quick Start</h2>
+      <div class="steps">
+        <div class="step">Download <strong>CoC-Farm-Bot-Windows.zip</strong> from the latest GitHub Release.</div>
+        <div class="step">Extract the ZIP and run <strong>CoC Farm Bot.exe</strong>.</div>
+        <div class="step">Set LDPlayer to <strong>1920 x 1080</strong> and enable ADB debugging.</div>
+        <div class="step">Click <strong>Open Game</strong>, then click <strong>Start</strong>.</div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <h2>FAQ</h2>
+      <div class="grid">
+        <div class="card"><h3>Do I need Python?</h3><p>No. The Windows release ZIP is for normal users and includes the runtime.</p></div>
+        <div class="card"><h3>Can I move only the exe?</h3><p>No. Keep the exe together with the _internal folder from the ZIP.</p></div>
+        <div class="card"><h3>What emulator?</h3><p>This build targets LDPlayer using ADB and ldconsole.</p></div>
+      </div>
+    </section>
+
+    <section class="card warn">
+      <h2>Disclaimer</h2>
+      <p>This project is unofficial and is not affiliated with, endorsed by, sponsored by, or approved by Supercell. Use at your own risk and review the game rules before using automation.</p>
+    </section>
+
+    <footer>
+      CoC Farm Bot. Unofficial community project.
+    </footer>
+  </div>
+</body>
+</html>

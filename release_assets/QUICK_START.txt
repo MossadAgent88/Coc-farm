@@ -1,0 +1,40 @@
+CoC Farm Bot - Windows Quick Start
+==================================
+
+You do NOT need Python, pip, Git, or developer tools for this release.
+
+1. Extract this ZIP to a normal folder, for example:
+   C:\CoC-Farm-Bot
+
+2. Keep these files together:
+   - CoC Farm Bot.exe
+   - _internal\
+   - QUICK_START.txt
+
+3. Install and configure LDPlayer:
+   - Install Clash of Clans inside LDPlayer.
+   - Set LDPlayer resolution to 1920 x 1080.
+   - Enable ADB debugging / local ADB connection.
+
+4. Run:
+   CoC Farm Bot.exe
+
+5. In the app:
+   - Click Open Game.
+   - Wait until Clash of Clans is on the village screen.
+   - Review settings.
+   - Click Start.
+
+If LDPlayer is installed in a custom folder, set these Windows environment
+variables and restart the app:
+
+ADB_PATH=C:\path\to\LDPlayer\adb.exe
+LDCONSOLE_PATH=C:\path\to\LDPlayer\ldconsole.exe
+
+Troubleshooting:
+- If Open Game fails, check LDPlayer is installed and ADB debugging is enabled.
+- If detection fails, confirm LDPlayer resolution is exactly 1920 x 1080.
+- If Windows SmartScreen appears, use Run anyway only if you downloaded this ZIP
+  from the official GitHub Releases page for this repository.
+
+Unofficial project. Not affiliated with Supercell.

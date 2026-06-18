@@ -1,8 +1,4 @@
-name: Build Coc Farm Windows Package
-
-# Stable release workflow.
-# Fixed names are intentional: archive Coc-farm.zip, folder Coc-farm,
-# executable Coc-farm.exe. Version numbers belong only in tags/app metadata.
+name: Build and Publish Windows Release
 
 on:
   push:
@@ -11,29 +7,25 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to create/update, for example v1.5.0"
+        description: "Release tag, for example v1.0.0"
         required: false
-        default: ""
+        default: "v1.0.0"
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  windows-release:
     runs-on: windows-latest
+
     steps:
-      - name: Check out code
+      - name: Check out repository
         uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - name: Validate source
-        shell: pwsh
-        run: |
-          python -m py_compile cocbot/army.py cocbot/event_broom.py cocbot/config.py cocbot/updater.py cocbot/actions.py cocbot/loop.py cocbot/__init__.py gui.py test_event_broom.py test_battle_wait.py
 
       - name: Install dependencies
         shell: pwsh
@@ -42,29 +34,24 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller
 
-      - name: Build stable Windows package
+      - name: Syntax check
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --onedir `
-            --windowed `
-            --name Coc-farm `
-            --add-data "templates;templates" `
-            --collect-all customtkinter `
-            --collect-all PIL `
-            --hidden-import customtkinter `
-            --hidden-import PIL.Image `
-            --hidden-import cv2 `
-            gui.py
-          if (!(Test-Path "dist/Coc-farm/Coc-farm.exe")) {
-            throw "Build failed: dist/Coc-farm/Coc-farm.exe was not created"
+          python -m py_compile gui.py bot_controller.py cocbot\io.py cocbot\actions.py cocbot\__main__.py cocbot\loop.py
+
+      - name: Build Windows app and release ZIP
+        shell: pwsh
+        run: |
+          .\scripts\package_windows_release.ps1 -Build -Version "1.0.0" -OutputDir "release"
+          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
+            throw "Missing release ZIP"
+          }
+          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip.sha256")) {
+            throw "Missing checksum"
           }
 
       - name: Resolve release tag
-        id: tag
+        id: release_tag
         shell: pwsh
         run: |
           if ("${{ github.ref_type }}" -eq "tag") {
@@ -72,91 +59,19 @@ jobs:
           } elseif ("${{ inputs.tag }}") {
             $tag = "${{ inputs.tag }}"
           } else {
-            $version = python -c "import re; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('cocbot/__init__.py', encoding='utf-8').read()).group(1))"
-            $tag = "v$version"
+            $tag = "v1.0.0"
           }
-          if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
+          if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "zip=Coc-farm.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Package ZIP
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Compress-Archive -Path "dist/Coc-farm/*" -DestinationPath "${{ steps.tag.outputs.zip }}" -Force
-          if (!(Test-Path "${{ steps.tag.outputs.zip }}")) {
-            throw "Release archive was not created: ${{ steps.tag.outputs.zip }}"
-          }
-
-      - name: Publish release
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $repo = '${{ github.repository }}'
-          $tag = '${{ steps.tag.outputs.tag }}'
-          $zip = '${{ steps.tag.outputs.zip }}'
-          if (!(Test-Path $zip)) { throw "Release asset missing: $zip" }
-
-          $headers = @{
-            Authorization = "Bearer $env:GITHUB_TOKEN"
-            Accept = "application/vnd.github+json"
-            'X-GitHub-Api-Version' = '2022-11-28'
-          }
-          $api = "https://api.github.com/repos/$repo"
-          $notes = @"
-          ## Windows Package
-
-          Download `$zip`, extract it, and run `Coc-farm.exe` inside the extracted `Coc-farm` folder.
-
-          This build uses stable folder packaging instead of fragile one-file packaging to avoid missing Python DLL / `_MEI` temp extraction crashes.
-          "@
-
-          $release = $null
-          try {
-            $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases/tags/$tag" -Method Get
-          } catch {
-            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
-          }
-
-          if ($null -eq $release) {
-            $body = @{
-              tag_name = $tag
-              target_commitish = '${{ github.sha }}'
-              name = $tag
-              body = $notes
-              draft = $false
-              prerelease = $false
-              make_latest = 'true'
-            } | ConvertTo-Json
-            $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases" -Method Post -Body $body -ContentType 'application/json'
-          } else {
-            $body = @{
-              name = $tag
-              body = $notes
-              draft = $false
-              prerelease = $false
-              make_latest = 'true'
-            } | ConvertTo-Json
-            $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases/$($release.id)" -Method Patch -Body $body -ContentType 'application/json'
-          }
-
-          foreach ($asset in @($release.assets)) {
-            if ($asset.name -eq $zip) {
-              Invoke-RestMethod -Headers $headers -Uri "$api/releases/assets/$($asset.id)" -Method Delete | Out-Null
-            }
-          }
-
-          $uploadUrl = $release.upload_url -replace '\{\?name,label\}', "?name=$zip"
-          for ($i = 1; $i -le 3; $i++) {
-            try {
-              Invoke-RestMethod -Headers $headers -Uri $uploadUrl -Method Post -InFile $zip -ContentType 'application/zip' | Out-Null
-              Write-Host "Uploaded $zip to $tag"
-              exit 0
-            } catch {
-              Write-Host "Upload attempt $i failed: $($_.Exception.Message)"
-              if ($i -eq 3) { throw }
-              Start-Sleep -Seconds 5
-            }
-          }
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: CoC Farm Bot v1.0.0 - Windows EXE Release
+          body_path: release_assets/RELEASE_NOTES_v1.0.0.md
+          files: |
+            release/CoC-Farm-Bot-Windows.zip
+            release/CoC-Farm-Bot-Windows.zip.sha256
+          draft: false
+          prerelease: false
