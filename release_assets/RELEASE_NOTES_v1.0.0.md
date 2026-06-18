@@ -1,6 +1,6 @@
 # CoC Farm Bot v1.0.0 - Windows EXE Release
 
-This is the first public Windows release package for CoC Farm Bot.
+This release provides the polished Windows ZIP package and beginner-friendly documentation for CoC Farm Bot.
 
 ## What Changed
 
