@@ -44,7 +44,11 @@ def main():
         run_manual_attack,
         run_screenshot_test,
     )
-    from cocbot.actions import go_home
+    from cocbot.actions import go_home, open_game
+
+    if command == "open_game":
+        open_game()
+        return
 
     if not check_connection():
         logger.error("ADB not connected. Start LDPlayer first.")
@@ -63,11 +67,9 @@ def main():
         run_manual_attack(side)
     elif command == "detect_loot":
         run_detect_loot()
-    elif command in ("home", "open_game"):
+    elif command == "home":
         ensure_coc_running()
-        if command == "open_game":
-            logger.info("Game opened")
-        elif go_home():
+        if go_home():
             logger.info("Returned to home village")
         else:
             logger.error("Could not return to home village")

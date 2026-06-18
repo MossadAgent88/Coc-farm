@@ -64,6 +64,25 @@ COC_PACKAGE = "com.supercell.clashofclans"
 COC_ACTIVITY = "com.supercell.titan.GameApp"
 
 
+def _require_tool(path: str, label: str) -> None:
+    if not os.path.exists(path):
+        raise RuntimeError(f"{label} path not configured or not found: {path}")
+
+
+def _device_from_adb_devices() -> str | None:
+    result = subprocess.run(
+        [ADB_PATH, "devices"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        creationflags=_SUBPROCESS_FLAGS,
+    )
+    for line in result.stdout.strip().splitlines()[1:]:
+        if "\tdevice" in line:
+            return line.split("\t")[0]
+    return None
+
+
 def _run_adb(*args, timeout=10) -> subprocess.CompletedProcess:
     """Run an ADB command, auto-reconnect on failure."""
     serial = _detect_device()
@@ -127,36 +146,65 @@ def _detect_device() -> str:
     if DEVICE_SERIAL:
         return DEVICE_SERIAL
 
-    result = subprocess.run(
-        [ADB_PATH, "devices"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        creationflags=_SUBPROCESS_FLAGS,
-    )
-    for line in result.stdout.strip().splitlines()[1:]:
-        if "\tdevice" in line:
-            DEVICE_SERIAL = line.split("\t")[0]
-            logger.info(f"Auto-detected device: {DEVICE_SERIAL}")
-            return DEVICE_SERIAL
+    _require_tool(ADB_PATH, "ADB")
+
+    serial = _device_from_adb_devices()
+    if serial:
+        DEVICE_SERIAL = serial
+        logger.info(f"Auto-detected device: {DEVICE_SERIAL}")
+        return DEVICE_SERIAL
 
     logger.warning("No device found, attempting reconnect...")
     _reconnect()
 
-    result = subprocess.run(
-        [ADB_PATH, "devices"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        creationflags=_SUBPROCESS_FLAGS,
-    )
-    for line in result.stdout.strip().splitlines()[1:]:
-        if "\tdevice" in line:
-            DEVICE_SERIAL = line.split("\t")[0]
-            logger.info(f"Reconnected to device: {DEVICE_SERIAL}")
-            return DEVICE_SERIAL
+    serial = _device_from_adb_devices()
+    if serial:
+        DEVICE_SERIAL = serial
+        logger.info(f"Reconnected to device: {DEVICE_SERIAL}")
+        return DEVICE_SERIAL
 
     raise RuntimeError("No ADB device found after reconnect. Is LDPlayer running?")
+
+
+def start_ldplayer_if_needed(timeout: float = 90.0) -> str:
+    """Start LDPlayer with ldconsole when no ADB device is connected."""
+    global DEVICE_SERIAL
+    _require_tool(ADB_PATH, "ADB")
+
+    try:
+        return _detect_device()
+    except Exception as exc:
+        logger.info(f"No ADB device connected yet: {exc}")
+
+    _require_tool(LDCONSOLE_PATH, "LDPlayer")
+    logger.info(f"Starting LDPlayer index {LDPLAYER_INDEX}...")
+    result = subprocess.run(
+        [LDCONSOLE_PATH, "launch", "--index", LDPLAYER_INDEX],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        creationflags=_SUBPROCESS_FLAGS,
+    )
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"LDPlayer launch failed: {message or result.returncode}")
+
+    deadline = time.time() + timeout
+    last_error = ""
+    while time.time() < deadline:
+        try:
+            DEVICE_SERIAL = None
+            serial = _device_from_adb_devices()
+            if serial:
+                DEVICE_SERIAL = serial
+                logger.info(f"LDPlayer ADB device connected: {serial}")
+                return serial
+        except Exception as exc:
+            last_error = str(exc)
+        time.sleep(2)
+
+    detail = f": {last_error}" if last_error else ""
+    raise RuntimeError(f"ADB device not connected after launching LDPlayer{detail}")
 
 
 def capture_screenshot() -> np.ndarray:

@@ -45,17 +45,17 @@ def _run_bot_cli() -> None:
     elif subcmd in ("home", "open_game"):
         from loguru import logger
 
-        from cocbot.actions import go_home
-        from cocbot.loop import ensure_coc_running
+        from cocbot.actions import ensure_coc_running, go_home, open_game
 
-        ensure_coc_running()
         if subcmd == "open_game":
-            logger.info("Game opened")
-        elif go_home():
-            logger.info("Returned to home village")
+            open_game()
         else:
-            logger.error("Could not return to home village")
-            sys.exit(1)
+            ensure_coc_running()
+            if go_home():
+                logger.info("Returned to home village")
+            else:
+                logger.error("Could not return to home village")
+                sys.exit(1)
     elif subcmd == "collect_resources":
         from loguru import logger
 
@@ -134,8 +134,6 @@ class WebApi:
             self.controller.run_tool("home", "Returning home", settings=settings)
         elif name == "open_game":
             self.controller.run_tool("open_game", "Opening game", settings=settings)
-        elif name == "collect_resources":
-            self.controller.collect_resources()
         else:
             self.controller.emit("log", text=f"{name}: Not implemented yet", level="warning")
         return {"ok": True}

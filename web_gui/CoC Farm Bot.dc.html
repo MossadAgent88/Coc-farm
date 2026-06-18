@@ -289,7 +289,6 @@
 
     <div class="actions">
       <button class="btn btn--ghost btn--sm" onClick="{{ onUpdate }}">UPDATE</button>
-      <button class="btn btn--ghost btn--sm" onClick="{{ onDefaults }}">DEFAULTS</button>
       <button class="btn btn--green btn--lg" onClick="{{ onStart }}" disabled="{{ running }}"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 5v14l11-7z"/></svg>START</button>
       <button class="btn btn--red btn--lg" onClick="{{ onStop }}" disabled="{{ notRunning }}"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>STOP</button>
     </div>
@@ -468,8 +467,6 @@
               <button class="btn btn--ghost" onClick="{{ onReturnHome }}">Return Home</button>
               <button class="btn btn--ghost" onClick="{{ onOpenGame }}">Open Game</button>
               <button class="btn btn--ghost" onClick="{{ onSnap }}">Screenshot</button>
-              <button class="btn btn--ghost" onClick="{{ onArmyLink }}">Open Army Link</button>
-              <button class="btn btn--ghost" onClick="{{ onCollect }}">Collect Resources</button>
               <button class="btn btn--ghost" onClick="{{ onReload }}">Reload Config</button>
             </div>
           </div>
@@ -1024,15 +1021,12 @@ class Component extends DCLogic {
       onReturnHome: () => { this.showToast('Returning to home village', 'info'); this.callApi('run_tool', 'return_home', { settings: this.settingsPayload() }); },
       onOpenGame: () => { this.showToast('Launching game', 'info'); this.callApi('run_tool', 'open_game', { settings: this.settingsPayload() }); },
       onSnap: () => { this.showToast('Taking screenshot', 'info'); this.callApi('run_tool', 'screenshot', { settings: this.settingsPayload() }); },
-      onArmyLink: () => { const act = this.state.armies.find(x => x.name === this.state.activePreset); if (act) { this.openLink(act.link); } else { this.showToast('No active army set', 'info'); } },
-      onCollect: () => { this.showToast('Collect resources: not implemented yet', 'info'); this.callApi('run_tool', 'collect_resources', { settings: this.settingsPayload() }); },
       onReload: async () => { const res = await this.callApi('reload_config'); if (res && res.settings) this.applySettings(res.settings); this.showToast('Config reloaded', 'success'); },
       resultText: st.result.text, resultColor: resColors[st.result.type], resultBar: st.result.type === 'success' ? 'var(--green)' : st.result.type === 'error' ? 'var(--red)' : 'var(--txt3)',
       // header
       onStart: () => { this.callApi('start_bot', this.settingsPayload()); this.showToast('Bot start requested', 'success'); },
       onStop: () => { this.callApi('stop_bot'); this.showToast('Bot stop requested', 'error'); },
       onUpdate: () => { this.callApi('check_update'); this.showToast('Checking for update', 'info'); },
-      onDefaults: async () => { const res = await this.callApi('default_settings'); if (res && res.settings) this.applySettings(res.settings); this.showToast('Settings reset to defaults', 'info'); },
       // dirty
       dirty: st.dirty, onDiscard: async () => { const res = await this.callApi('load_settings'); if (res && res.settings) this.applySettings(res.settings); this.setState({ dirty: false }); this.showToast('Changes discarded', 'info'); }, onSaveSettings: () => { this.callApi('save_settings', this.settingsPayload()); this.setState({ dirty: false }); this.showToast('Settings saved'); },
       markDirty: () => { if (!this.state.dirty) this.setState({ dirty: true }); },
