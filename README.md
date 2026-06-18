@@ -50,7 +50,7 @@ Recommended capture: main window with the Settings tab and live Log panel visibl
 | Settings | Saves and reloads settings using the existing `settings.json` config system. |
 | Bases | Save, open, copy, and organize Clash base links. |
 | Armies | Save, open, copy, and organize Clash army links. |
-| Packaging | Windows `.exe` release package built with PyInstaller. |
+| Packaging | Windows `.exe` release package built with PyInstaller and QtWebEngine. |
 
 ## Requirements
 
@@ -201,11 +201,11 @@ Requirements:
 Build:
 
 ```powershell
-python -m venv .venv-build
+py -3.12 -m venv .venv-build
 .\.venv-build\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
 .\.venv-build\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv-build\Scripts\python.exe -m pip install -r requirements-build.txt
-.\.venv-build\Scripts\python.exe -c "import webview; import clr; print('webview/pythonnet import OK')"
+.\.venv-build\Scripts\python.exe -c "from PySide6.QtWebEngineWidgets import QWebEngineView; print('PySide6 QtWebEngine import OK')"
 .\.venv-build\Scripts\python.exe -m PyInstaller --noconfirm --clean CoCBot.spec
 ```
 

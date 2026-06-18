@@ -10,7 +10,7 @@ This release provides the verified Windows ZIP package and beginner-friendly doc
 - Added Bases and Armies libraries for Clash links.
 - Connected Manual tools including Open Game, Return Home, Screenshot, Detect Loot, Manual Attack, and Reload Config.
 - Added LDPlayer startup support through the existing ADB/ldconsole path system.
-- Fixed Windows EXE packaging for pywebview/pythonnet so `Python.Runtime.dll` and clr-loader runtime files are bundled together.
+- Replaced the old WinForms/.NET web host with PySide6 QtWebEngine so the Windows EXE no longer needs that runtime bridge.
 - Added beginner-friendly README, quick-start guide, release notes, and GitHub Actions release packaging.
 
 ## Main Features

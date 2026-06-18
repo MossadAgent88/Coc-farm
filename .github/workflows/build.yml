@@ -33,7 +33,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-build.txt
-          python -c "import webview; import clr; print('webview/pythonnet import OK')"
+          python -c "from PySide6.QtWebEngineWidgets import QWebEngineView; print('PySide6 QtWebEngine import OK')"
 
       - name: Syntax check
         shell: pwsh

@@ -4,10 +4,10 @@
 # Produces a stable folder package at: dist\Coc-farm\Coc-farm.exe
 
 from PyInstaller.utils.hooks import (
+    collect_all,
     collect_data_files,
     collect_dynamic_libs,
     collect_submodules,
-    copy_metadata,
 )
 
 # Bundle the whole templates/ folder (images the bot matches against) at the
@@ -16,31 +16,23 @@ datas = [("templates", "templates")]
 datas += [("web_gui", "web_gui")]
 # customtkinter ships theme/asset files it loads at runtime.
 datas += collect_data_files("customtkinter")
-# pywebview's Windows backend loads pythonnet/clr_loader at runtime. Collect the
-# runtime files and package metadata explicitly so Python.Runtime.dll and its
-# loader dependencies come from the same installed versions.
-datas += collect_data_files("webview")
-datas += collect_data_files("pythonnet")
-datas += collect_data_files("clr_loader")
-datas += copy_metadata("pywebview")
-datas += copy_metadata("pythonnet")
-datas += copy_metadata("clr_loader")
+# The GUI renders the uploaded HTML through PySide6 QtWebEngine. Bundle Qt's
+# helper processes, translations, resources, and plugins explicitly.
+pyside_datas, pyside_binaries, pyside_hiddenimports = collect_all("PySide6")
+datas += pyside_datas
 
 binaries = []
-binaries += collect_dynamic_libs("pythonnet")
-binaries += collect_dynamic_libs("clr_loader")
+binaries += pyside_binaries
+binaries += collect_dynamic_libs("PySide6")
 
 hiddenimports = collect_submodules("cocbot")
-hiddenimports += collect_submodules("webview")
-hiddenimports += collect_submodules("pythonnet")
-hiddenimports += collect_submodules("clr_loader")
+hiddenimports += pyside_hiddenimports
 hiddenimports += [
-    "clr",
-    "pythonnet",
-    "clr_loader",
-    "webview",
-    "webview.platforms.winforms",
-    "webview.platforms.edgechromium",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineWidgets",
 ]
 
 block_cipher = None

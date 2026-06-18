@@ -13,12 +13,54 @@ if ($Build) {
     $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
 
     if (!(Test-Path $BuildPython)) {
-        python -m venv $BuildVenv
+        $Candidates = @()
+        if ($env:PYTHON_BUILD) {
+            $Candidates += ,@($env:PYTHON_BUILD)
+        }
+        if (Get-Command py -ErrorAction SilentlyContinue) {
+            $Candidates += ,@("py", "-3.12")
+        }
+        if (Get-Command uv -ErrorAction SilentlyContinue) {
+            uv python install 3.12
+            $UvPython = (uv python find 3.12).Trim()
+            if ($UvPython) {
+                $Candidates += ,@($UvPython)
+            }
+        }
+        $Candidates += ,@("python")
+
+        $SelectedPython = $null
+        foreach ($Candidate in $Candidates) {
+            $Command = $Candidate[0]
+            $Args = @()
+            if ($Candidate.Count -gt 1) {
+                $Args = $Candidate[1..($Candidate.Count - 1)]
+            }
+            try {
+                & $Command @Args -c "import platform, struct, sys; assert sys.version_info[:2] == (3, 12), sys.version; assert struct.calcsize('P') * 8 == 64, platform.architecture()" 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    $SelectedPython = $Candidate
+                    break
+                }
+            } catch {
+                continue
+            }
+        }
+        if ($null -eq $SelectedPython) {
+            throw "Python 3.12 x64 is required to build the Windows release."
+        }
+        $SelectedCommand = $SelectedPython[0]
+        $SelectedArgs = @()
+        if ($SelectedPython.Count -gt 1) {
+            $SelectedArgs = $SelectedPython[1..($SelectedPython.Count - 1)]
+        }
+        & $SelectedCommand @SelectedArgs -m venv $BuildVenv
     }
+    & $BuildPython -c "import platform, struct, sys; assert sys.version_info[:2] == (3, 12), sys.version; assert struct.calcsize('P') * 8 == 64, platform.architecture(); print(sys.version)"
     & $BuildPython -m pip install --upgrade pip setuptools wheel
     & $BuildPython -m pip install -r requirements.txt
     & $BuildPython -m pip install -r requirements-build.txt
-    & $BuildPython -c "import webview; import clr; print('webview/pythonnet import OK')"
+    & $BuildPython -c "from PySide6.QtWebEngineWidgets import QWebEngineView; print('PySide6 QtWebEngine import OK')"
     & $BuildPython -m PyInstaller --noconfirm --clean CoCBot.spec
 }
 
