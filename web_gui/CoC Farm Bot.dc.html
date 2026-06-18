@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#070809; --bg2:#0b0d12; --panel:#0f1218; --card:#161a22; --card2:#13161d; --inp:#0c0f14;
+      --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.045);
+      --txt:#eef0f4; --txt2:#b3b9c5; --txt3:#828a99;
+      --blue:#3d7bff; --blue-l:#6da0ff; --green:#22c277; --green-l:#39df8d;
+      --red:#ef4757; --red-l:#ff7d89; --amber:#f5a623; --purple:#a98bff;
+      --sans:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+      --r:12px; --r-sm:9px; --r-lg:16px;
+    }
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;height:100%;background:var(--bg);overflow:hidden;}
+    ::-webkit-scrollbar{width:9px;height:9px;}
+    ::-webkit-scrollbar-track{background:transparent;}
+    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
+    ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2);background-clip:padding-box;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    @keyframes toastIn{from{transform:translateY(14px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+    @keyframes overlayIn{from{opacity:0}to{opacity:1}}
+    @keyframes modalIn{from{transform:translateY(12px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+
+    .app{height:100vh;width:100%;display:flex;flex-direction:column;overflow:hidden;
+      background:radial-gradient(130% 90% at 85% -15%,#161d2c 0%,#0a0d12 48%,#070809 100%);
+      font-family:var(--sans);color:var(--txt);font-size:13px;}
+
+    /* Titlebar */
+    .titlebar{flex:none;height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(7,8,9,.55);border-bottom:1px solid var(--line2);}
+    .tb-left{display:flex;align-items:center;gap:8px;}
+    .tb-logo{width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,#6d5cff,#3d7bff);box-shadow:0 0 8px rgba(109,92,255,.55);}
+    .tb-title{font-size:11.5px;font-weight:600;color:var(--txt3);}
+    .tb-ctrls{display:flex;gap:3px;}
+    .tb-btn{width:28px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--txt3);cursor:pointer;font-size:13px;}
+    .tb-btn:hover{background:rgba(255,255,255,.07);}
+    .tb-btn.close:hover{background:var(--red);color:#fff;}
+
+    /* Header */
+    .hdr{flex:none;display:flex;align-items:center;gap:14px;padding:9px 16px;background:rgba(11,14,20,.5);border-bottom:1px solid var(--line);}
+    .brand{display:flex;align-items:center;gap:11px;flex:none;}
+    .avatar{width:38px;height:38px;border-radius:11px;background:linear-gradient(150deg,#6d5cff,#3d7bff 60%,#2a5fd0);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;box-shadow:0 4px 14px rgba(61,123,255,.35),inset 0 1px 0 rgba(255,255,255,.25);}
+    .brand-name{font-size:14px;font-weight:800;letter-spacing:-.2px;line-height:1.1;}
+    .brand-sub{font-size:10.5px;color:var(--txt3);font-weight:600;margin-top:1px;}
+    .statrow{display:flex;gap:8px;flex:1;min-width:0;overflow:hidden;}
+    .stat{display:flex;flex-direction:column;gap:1px;background:rgba(255,255,255,.035);border:1px solid var(--line2);border-radius:10px;padding:6px 11px;min-width:0;}
+    .stat-k{font-size:8.5px;font-weight:700;letter-spacing:.9px;color:var(--txt3);text-transform:uppercase;}
+    .stat-v{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--txt);white-space:nowrap;display:flex;align-items:center;gap:6px;}
+    .sdot{width:8px;height:8px;border-radius:50%;flex:none;animation:pulse 1.8s ease-in-out infinite;}
+    .cyc-inp{width:42px;background:var(--inp);border:1px solid var(--line);border-radius:6px;color:var(--txt);padding:2px 4px;font-family:var(--mono);font-size:11px;font-weight:600;text-align:center;outline:none;}
+    .cyc-inp:focus{border-color:var(--blue);}
+    .actions{display:flex;align-items:center;gap:8px;flex:none;}
+
+    /* Buttons */
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 14px;border-radius:var(--r-sm);border:1px solid transparent;font-family:var(--sans);font-weight:700;font-size:12.5px;letter-spacing:.3px;cursor:pointer;transition:transform .12s,box-shadow .12s,background .12s,color .12s,border-color .12s;white-space:nowrap;user-select:none;}
+    .btn:active{transform:translateY(1px);}
+    .btn:disabled,.btn.is-disabled{opacity:.38;cursor:not-allowed;box-shadow:none!important;transform:none!important;filter:grayscale(.35);}
+    .btn.loading{pointer-events:none;}
+    .btn.loading::after{content:'';width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;}
+    .btn--green{background:linear-gradient(180deg,#27cf7f,#16a866);color:#03130b;box-shadow:0 5px 18px rgba(34,194,119,.4),inset 0 1px 0 rgba(255,255,255,.35);}
+    .btn--green:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(34,194,119,.55),inset 0 1px 0 rgba(255,255,255,.4);}
+    .btn--red{background:rgba(239,71,87,.14);border-color:rgba(239,71,87,.4);color:var(--red-l);}
+    .btn--red:hover{background:var(--red);color:#fff;}
+    .btn--blue{background:linear-gradient(180deg,#4a85ff,#3168e0);color:#fff;box-shadow:0 4px 14px rgba(61,123,255,.35);}
+    .btn--blue:hover{transform:translateY(-1px);box-shadow:0 7px 20px rgba(61,123,255,.5);}
+    .btn--blue-soft{background:rgba(61,123,255,.12);border-color:rgba(61,123,255,.38);color:var(--blue-l);}
+    .btn--blue-soft:hover{background:rgba(61,123,255,.22);}
+    .btn--ghost{background:rgba(255,255,255,.04);border-color:var(--line);color:var(--txt2);}
+    .btn--ghost:hover{background:rgba(255,255,255,.09);color:var(--txt);}
+    .btn--danger-soft{background:rgba(239,71,87,.1);border-color:rgba(239,71,87,.3);color:var(--red-l);}
+    .btn--danger-soft:hover{background:rgba(239,71,87,.2);}
+    .btn--lg{height:40px;font-size:13.5px;padding:0 22px;}
+    .btn--sm{height:30px;padding:0 11px;font-size:11.5px;gap:5px;}
+    .btn--block{width:100%;}
+    .ico{width:14px;height:14px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+    .ico-sm{width:13px;height:13px;}
+
+    /* Tabs */
+    .tabbar{flex:none;display:flex;justify-content:center;padding:9px 0 5px;}
+    .tabs{display:flex;gap:3px;background:rgba(7,8,9,.6);border:1px solid var(--line);padding:4px;border-radius:12px;}
+    .tab{display:flex;align-items:center;gap:7px;padding:8px 18px;border-radius:9px;border:none;cursor:pointer;font-family:var(--sans);font-weight:600;font-size:12.5px;background:transparent;color:var(--txt3);transition:all .14s;}
+    .tab:hover{color:var(--txt2);background:rgba(255,255,255,.04);}
+    .tab:focus{outline:none;}
+    .tab.active{background:linear-gradient(180deg,#4a85ff,#3168e0);color:#fff;font-weight:700;box-shadow:0 3px 12px rgba(61,123,255,.45);}
+    .tab .ico{width:14px;height:14px;}
+
+    /* Content */
+    .content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 16px 22px;}
+    .wrap{max-width:1180px;margin:0 auto;}
+
+    /* Cards & sections */
+    .card{background:linear-gradient(180deg,rgba(24,28,38,.92),rgba(17,20,28,.92));border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;}
+    .sec-t{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+    .sec-bar{width:3px;height:15px;border-radius:3px;}
+    .sec-l{font-size:12px;font-weight:800;letter-spacing:1.3px;color:var(--txt);white-space:nowrap;}
+    .sec-r{margin-left:auto;font-size:11px;font-weight:600;color:var(--txt3);}
+    .divider{height:1px;background:var(--line);margin:13px 0;}
+
+    /* Fields */
+    .field{display:flex;flex-direction:column;gap:6px;min-width:0;}
+    .field-l{font-size:11px;font-weight:700;letter-spacing:.3px;color:var(--txt2);display:flex;align-items:center;gap:6px;}
+    .inp{width:100%;background:var(--inp);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:8px 11px;font-family:var(--mono);font-size:12.5px;font-weight:600;outline:none;transition:border-color .14s,box-shadow .14s;}
+    .inp::placeholder{color:var(--txt3);font-weight:500;}
+    .inp:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(61,123,255,.14);}
+    .inp.amber:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,166,35,.14);}
+    .inp:invalid{border-color:var(--red);box-shadow:0 0 0 3px rgba(239,71,87,.12);}
+    input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+    input[type=number].inp{-moz-appearance:textfield;}
+    .inp--center{text-align:center;}
+    .selwrap{position:relative;}
+    .sel{width:100%;appearance:none;background:var(--inp);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:8px 32px 8px 11px;font-family:var(--mono);font-size:12.5px;font-weight:500;outline:none;cursor:pointer;transition:border-color .14s;}
+    .sel:focus{border-color:var(--blue);}
+    .selwrap::after{content:'▾';position:absolute;right:11px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--txt3);font-size:11px;}
+    .rangewrap{display:flex;align-items:center;gap:7px;}
+    .rangewrap .inp{text-align:center;}
+    .dash{color:#3a4150;font-weight:700;}
+    .unit{font-size:11px;color:var(--txt3);font-weight:600;white-space:nowrap;}
+
+    /* Segmented */
+    .seg{display:inline-flex;gap:3px;background:var(--inp);border:1px solid var(--line);padding:3px;border-radius:10px;}
+    .seg.fill{display:flex;}.seg.fill .seg-b{flex:1;}
+    .seg-b{padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-family:var(--sans);font-weight:600;font-size:12px;background:transparent;color:var(--txt3);transition:all .14s;white-space:nowrap;}
+    .seg-b:hover{color:var(--txt2);}
+    .seg-b.active{background:linear-gradient(180deg,#4a85ff,#3168e0);color:#fff;font-weight:700;box-shadow:0 2px 8px rgba(61,123,255,.4);}
+
+    /* Toggle row */
+    .togrow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--inp);border:1px solid var(--line2);border-radius:10px;padding:9px 12px;}
+    .togrow .lab{font-size:12.5px;font-weight:600;color:var(--txt2);display:flex;align-items:center;gap:6px;}
+
+    /* hint tooltip */
+    .hint{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.08);color:var(--txt3);font-size:9px;font-weight:800;cursor:help;position:relative;flex:none;}
+    .hint:hover{background:var(--blue);color:#fff;}
+    .hint:hover::after{content:attr(data-tip);position:absolute;bottom:150%;left:50%;transform:translateX(-50%);width:180px;background:#05060a;color:var(--txt);font-size:11px;font-weight:500;line-height:1.45;text-align:left;padding:8px 10px;border-radius:8px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.6);border:1px solid var(--line);pointer-events:none;}
+
+    /* chips / badges */
+    .chip{font-size:10.5px;font-weight:600;color:var(--txt2);background:rgba(255,255,255,.06);border:1px solid var(--line2);padding:2px 8px;border-radius:6px;white-space:nowrap;}
+    .th-badge{font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);padding:2px 7px;border-radius:6px;backdrop-filter:blur(4px);}
+    .cat{font-size:10px;font-weight:700;letter-spacing:.4px;padding:2px 8px;border-radius:6px;text-transform:uppercase;}
+    .cat[data-c="Farming"]{color:var(--green);background:rgba(34,194,119,.14);}
+    .cat[data-c="Trophy"]{color:var(--amber);background:rgba(245,166,35,.14);}
+    .cat[data-c="Hybrid"]{color:var(--blue-l);background:rgba(61,123,255,.14);}
+    .cat[data-c="War"]{color:var(--red-l);background:rgba(239,71,87,.14);}
+    .cat[data-c="Legend"]{color:var(--purple);background:rgba(169,139,255,.14);}
+    .cat[data-c="Progress Base"]{color:#5ad1c4;background:rgba(90,209,196,.14);}
+    .cat[data-c="Donation"]{color:var(--blue-l);background:rgba(61,123,255,.14);}
+    .cat[data-c="Fun"]{color:var(--purple);background:rgba(169,139,255,.14);}
+
+    /* library */
+    .libbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px;}
+    .search{position:relative;flex:1;min-width:180px;}
+    .search .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--txt3);}
+    .search .inp{padding-left:32px;font-family:var(--sans);font-weight:500;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:13px;}
+    .lcard{background:linear-gradient(180deg,rgba(24,28,38,.92),rgba(16,19,26,.92));border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;display:flex;flex-direction:column;transition:border-color .14s,transform .14s;}
+    .lcard:hover{border-color:rgba(61,123,255,.4);transform:translateY(-2px);}
+    .thumb{aspect-ratio:16/9;position:relative;background:repeating-linear-gradient(135deg,#161b24 0 11px,#10141b 11px 22px);display:flex;align-items:center;justify-content:center;}
+    .thumb-l{font-family:var(--mono);font-size:10.5px;color:#39414f;}
+    .thumb-tl{position:absolute;top:8px;left:8px;}
+    .thumb-tr{position:absolute;top:8px;right:8px;}
+    .star{width:28px;height:28px;border-radius:8px;border:none;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);color:#5b6273;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;}
+    .star:hover{color:var(--amber);background:rgba(0,0,0,.7);}
+    .star[data-on="true"]{color:var(--amber);}
+    .lcard-body{padding:12px 14px;display:flex;flex-direction:column;gap:9px;flex:1;}
+    .lcard-title{font-size:14px;font-weight:800;letter-spacing:-.2px;line-height:1.2;}
+    .lcard-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+    .lcard-tags{display:flex;gap:5px;flex-wrap:wrap;}
+    .kv{display:flex;gap:8px;font-size:11.5px;line-height:1.5;}
+    .kv-k{color:var(--txt3);font-weight:600;width:54px;flex:none;}
+    .kv-v{color:var(--txt2);font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.45;}
+    .lcard-foot{display:flex;align-items:center;gap:6px;padding:11px 14px;border-top:1px solid var(--line);background:rgba(0,0,0,.18);}
+    .icobtn{width:30px;height:30px;flex:none;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--txt2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;}
+    .icobtn:hover{background:rgba(255,255,255,.1);color:var(--txt);}
+    .icobtn.del:hover{background:rgba(239,71,87,.2);color:var(--red-l);border-color:rgba(239,71,87,.4);}
+    .lastcopy{margin-left:auto;font-size:10px;color:var(--txt3);font-weight:600;}
+    .active-pill{font-size:9.5px;font-weight:800;letter-spacing:.5px;color:var(--green);background:rgba(34,194,119,.14);border:1px solid rgba(34,194,119,.3);padding:2px 7px;border-radius:6px;text-transform:uppercase;}
+
+    /* empty state */
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:54px 20px;text-align:center;}
+    .empty-ic{width:54px;height:54px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--txt3);}
+    .empty-t{font-size:15px;font-weight:700;color:var(--txt2);}
+    .empty-s{font-size:12.5px;color:var(--txt3);max-width:300px;}
+
+    /* log */
+    .console{height:288px;overflow-y:auto;padding:11px 15px;background:#070a0e;font-family:var(--mono);font-size:12px;line-height:1.8;}
+    .logline{display:flex;gap:10px;align-items:baseline;padding:.5px 0;}
+    .logtime{color:#4a5160;flex:none;}
+    .loglv{flex:none;min-width:58px;text-align:center;font-size:9px;font-weight:700;letter-spacing:.4px;padding:1px 6px;border-radius:5px;}
+    .loglv[data-l="INFO"]{color:var(--blue-l);background:rgba(61,123,255,.16);}
+    .loglv[data-l="WARNING"]{color:var(--amber);background:rgba(245,166,35,.16);}
+    .loglv[data-l="ERROR"]{color:var(--red-l);background:rgba(239,71,87,.16);}
+    .loglv[data-l="DEBUG"]{color:var(--txt3);background:rgba(255,255,255,.07);}
+    .logmsg{color:#c8cdd8;word-break:break-word;}
+    .logmsg.err{color:#ffb3bb;}
+    .dbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+    .dbg{border-radius:11px;overflow:hidden;border:1px solid var(--line);background:#070a0e;cursor:pointer;transition:border-color .14s;}
+    .dbg:hover{border-color:rgba(61,123,255,.5);}
+    .dbg-foot{display:flex;justify-content:space-between;padding:6px 9px;border-top:1px solid var(--line2);font-family:var(--mono);}
+
+    /* unsaved bar */
+    .unsaved{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(20,24,32,.96);border:1px solid rgba(245,166,35,.4);border-radius:13px;padding:9px 12px 9px 16px;box-shadow:0 12px 36px rgba(0,0,0,.5);z-index:40;animation:toastIn .2s ease;}
+    .unsaved .u-t{font-size:12.5px;font-weight:600;color:var(--txt);}
+    .unsaved .u-d{width:7px;height:7px;border-radius:50%;background:var(--amber);}
+
+    /* toast */
+    .toastwrap{position:absolute;right:16px;bottom:16px;z-index:80;display:flex;flex-direction:column;gap:8px;}
+    .toast{display:flex;align-items:center;gap:10px;background:rgba(18,22,30,.98);border:1px solid var(--line);border-radius:12px;padding:11px 15px;box-shadow:0 12px 36px rgba(0,0,0,.55);animation:toastIn .22s ease;min-width:220px;}
+    .toast-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+    .toast[data-t="success"] .toast-dot{background:var(--green);}
+    .toast[data-t="error"] .toast-dot{background:var(--red);}
+    .toast[data-t="info"] .toast-dot{background:var(--blue);}
+    .toast-m{font-size:12.5px;font-weight:600;color:var(--txt);}
+
+    /* modal / confirm */
+    .overlay{position:absolute;inset:0;z-index:90;background:rgba(4,5,8,.7);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;animation:overlayIn .16s ease;}
+    .modal{width:100%;max-width:520px;max-height:90%;display:flex;flex-direction:column;background:linear-gradient(180deg,#1a1f29,#12151c);border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.65);animation:modalIn .2s ease;overflow:hidden;}
+    .modal-h{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);}
+    .modal-t{font-size:15px;font-weight:800;}
+    .modal-x{width:30px;height:30px;border-radius:8px;border:none;background:rgba(255,255,255,.05);color:var(--txt3);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+    .modal-x:hover{background:rgba(255,255,255,.1);color:var(--txt);}
+    .modal-b{padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:13px;}
+    .modal-f{display:flex;justify-content:flex-end;gap:9px;padding:14px 20px;border-top:1px solid var(--line);}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+    .form-err{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--red-l);background:rgba(239,71,87,.1);border:1px solid rgba(239,71,87,.3);border-radius:9px;padding:8px 11px;}
+    .ta{width:100%;background:var(--inp);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:9px 11px;font-family:var(--sans);font-size:12.5px;font-weight:500;outline:none;resize:vertical;min-height:56px;line-height:1.45;}
+    .ta:focus{border-color:var(--blue);}
+    .confirm{max-width:380px;}
+    .confirm-b{padding:20px;display:flex;gap:14px;align-items:flex-start;}
+    .confirm-ic{width:40px;height:40px;flex:none;border-radius:11px;background:rgba(239,71,87,.14);border:1px solid rgba(239,71,87,.3);color:var(--red-l);display:flex;align-items:center;justify-content:center;}
+    .confirm-t{font-size:14px;font-weight:700;margin-bottom:4px;}
+    .confirm-m{font-size:12.5px;color:var(--txt2);line-height:1.5;}
+
+    .span2{grid-column:span 2;}
+    @media(max-width:1080px){.settings-grid{grid-template-columns:1fr!important;}}
+    @media(max-width:860px){.statrow{display:none;}.form-grid{grid-template-columns:1fr;}}
+  </style>
+</helmet>
+
+<div class="app" style="{{ appStyle }}">
+
+  <!-- Titlebar -->
+  <div class="titlebar">
+    <div class="tb-left"><div class="tb-logo"></div><span class="tb-title">Clash of Clans Farm Bot — v1.5.0</span></div>
+    <div class="tb-ctrls">
+      <div class="tb-btn">‒</div>
+      <div class="tb-btn">▢</div>
+      <div class="tb-btn close">✕</div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="brand">
+      <div class="avatar">CB</div>
+      <div>
+        <div class="brand-name" style="color: {{ statusColor }};">{{ statusText }}</div>
+        <div class="brand-sub">FarmBot · v1.5.0</div>
+      </div>
+    </div>
+
+    <div class="statrow">
+      <div class="stat">
+        <span class="stat-k">Status</span>
+        <span class="stat-v"><span class="sdot" style="background: {{ statusColor }};"></span><span style="color: {{ statusColor }};font-family:var(--sans);font-weight:700;font-size:12px;">{{ stepText }}</span></span>
+      </div>
+      <div class="stat">
+        <span class="stat-k">Uptime</span>
+        <span class="stat-v" style="color:var(--blue-l);">{{ uptime }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat-k">Cycles</span>
+        <span class="stat-v">{{ cycle }} <span style="color:#3a4150;">/</span> <input class="cyc-inp" type="text" defaultValue="0"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-k">Active army</span>
+        <span class="stat-v" style="font-family:var(--sans);font-weight:700;font-size:12px;">{{ activePreset }}</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn--ghost btn--sm" onClick="{{ onUpdate }}">UPDATE</button>
+      <button class="btn btn--green btn--lg" onClick="{{ onStart }}" disabled="{{ running }}"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 5v14l11-7z"/></svg>START</button>
+      <button class="btn btn--red btn--lg" onClick="{{ onStop }}" disabled="{{ notRunning }}"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>STOP</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabbar">
+    <div class="tabs">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+        <button class="{{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+      </sc-for>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <main class="content">
+    <div class="wrap">
+
+      <!-- ===================== SETTINGS ===================== -->
+      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ true }}">
+      <div onInput="{{ markDirty }}" class="settings-grid" style="display:grid;grid-template-columns:1.04fr .96fr;gap:13px;align-items:start;">
+
+        <!-- Attack -->
+        <div class="card">
+          <div class="sec-t"><div class="sec-bar" style="background:var(--blue);"></div><span class="sec-l">ATTACK SETTINGS</span></div>
+          <div style="display:flex;flex-direction:column;gap:13px;">
+            <div class="field">
+              <span class="field-l">Strategy <span class="hint" data-tip="Which side of the base troops deploy from.">?</span></span>
+              <div class="seg fill">
+                <sc-for list="{{ strategyOptions }}" as="o" hint-placeholder-count="4">
+                  <button class="{{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div class="field">
+              <span class="field-l">Army preset <span class="hint" data-tip="Saved army composition trained before each attack.">?</span></span>
+              <div class="selwrap">
+                <select class="sel" defaultValue="electro_dragon">
+                  <option value="electro_dragon">electro_dragon</option>
+                  <option value="super_archer">super_archer</option>
+                  <option value="barch">barch</option>
+                  <option value="dragon_loon">dragon_loon</option>
+                  <option value="hog_rider">hog_rider</option>
+                </select>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
+              <div class="field"><span class="field-l">Min total loot <span class="hint" data-tip="Skip bases below this combined loot value.">?</span></span><input class="inp" type="number" min="0" max="100000000" defaultValue="1500000"></div>
+              <div class="field"><span class="field-l">Min remaining <span class="hint" data-tip="Stop searching once this much loot is left available.">?</span></span><input class="inp" type="number" min="0" max="100000000" defaultValue="100000"></div>
+              <div class="field"><span class="field-l">Max searches <span class="hint" data-tip="Give up after this many next-base searches per cycle.">?</span></span><input class="inp" type="number" min="1" max="999" defaultValue="20"></div>
+              <div class="field"><span class="field-l" style="color:var(--amber);">Min Gold</span><input class="inp amber" type="number" min="0" max="100000000" defaultValue="0"></div>
+              <div class="field"><span class="field-l" style="color:var(--purple);">Min Elixir</span><input class="inp" type="number" min="0" max="100000000" defaultValue="0"></div>
+              <div class="field"><span class="field-l" style="color:var(--red-l);">Min Dark Elixir</span><input class="inp" type="number" min="0" max="1000000" defaultValue="0"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- right column -->
+        <div style="display:flex;flex-direction:column;gap:13px;">
+          <!-- General -->
+          <div class="card">
+            <div class="sec-t"><div class="sec-bar" style="background:var(--txt3);"></div><span class="sec-l">GENERAL</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+              <div class="togrow"><span class="lab">Donations</span><dc-import name="Toggle" on="{{ s.donations }}" on-toggle="{{ tog.donations }}" hint-size="40px,23px"></dc-import></div>
+              <div class="togrow"><span class="lab">Log file</span><dc-import name="Toggle" on="{{ s.logFile }}" on-toggle="{{ tog.logFile }}" hint-size="40px,23px"></dc-import></div>
+              <div class="togrow"><span class="lab">Splash disabled</span><dc-import name="Toggle" on="{{ s.splash }}" on-toggle="{{ tog.splash }}" hint-size="40px,23px"></dc-import></div>
+              <div class="togrow"><span class="lab">Debug screenshots</span><dc-import name="Toggle" on="{{ s.debug }}" on-toggle="{{ tog.debug }}" hint-size="40px,23px"></dc-import></div>
+              <div class="togrow"><span class="lab">Event dump</span><dc-import name="Toggle" on="{{ s.eventDump }}" on-toggle="{{ tog.eventDump }}" hint-size="40px,23px"></dc-import></div>
+              <div class="togrow"><span class="lab">Reconnect</span><div class="rangewrap"><input class="inp inp--center" style="width:56px;" type="number" min="0" max="3600" defaultValue="300"><span class="unit">s</span></div></div>
+            </div>
+          </div>
+          <!-- Anti-detection -->
+          <div class="card">
+            <div class="sec-t"><div class="sec-bar" style="background:var(--amber);"></div><span class="sec-l">ANTI-DETECTION / TIMING</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
+              <div class="field"><span class="field-l">Break every <span class="unit">min</span></span><div class="rangewrap"><input class="inp" type="number" min="0" max="999" defaultValue="60"><span class="dash">–</span><input class="inp" type="number" min="0" max="999" defaultValue="120"></div></div>
+              <div class="field"><span class="field-l">Duration <span class="unit">min</span></span><div class="rangewrap"><input class="inp" type="number" min="0" max="999" defaultValue="4"><span class="dash">–</span><input class="inp" type="number" min="0" max="999" defaultValue="16"></div></div>
+              <div class="field"><span class="field-l">Search skip <span class="unit">s</span></span><div class="rangewrap"><input class="inp" type="number" min="0" max="999" defaultValue="0"><span class="dash">–</span><input class="inp" type="number" min="0" max="999" defaultValue="6"></div></div>
+              <div class="field"><span class="field-l">Long skip <span class="unit">s</span></span><div class="rangewrap"><input class="inp" type="number" min="0" max="999" defaultValue="5"><span class="dash">–</span><input class="inp" type="number" min="0" max="999" defaultValue="15"></div></div>
+              <div class="field"><span class="field-l">Long chance <span class="hint" data-tip="Probability (0–1) a skip becomes a longer pause.">?</span></span><input class="inp" type="number" min="0" max="1" step="0.01" defaultValue="0.15"></div>
+              <div class="field"><span class="field-l">Post delay <span class="unit">s</span></span><div class="rangewrap"><input class="inp" type="number" min="0" max="999" defaultValue="3"><span class="dash">–</span><input class="inp" type="number" min="0" max="999" defaultValue="20"></div></div>
+            </div>
+            <div class="divider"></div>
+            <div class="togrow" style="margin-bottom:9px;">
+              <span class="lab"><dc-import name="Toggle" on="{{ s.randomEvents }}" on-toggle="{{ tog.randomEvents }}" hint-size="40px,23px"></dc-import> Random events</span>
+              <div class="rangewrap"><span class="unit">every</span><input class="inp inp--center" style="width:46px;" type="number" min="1" max="999" defaultValue="3"><span class="dash">–</span><input class="inp inp--center" style="width:46px;" type="number" min="1" max="999" defaultValue="10"><span class="unit">cycles</span></div>
+            </div>
+            <div class="togrow">
+              <span class="lab"><dc-import name="Toggle" on="{{ s.fatigue }}" on-toggle="{{ tog.fatigue }}" hint-size="40px,23px"></dc-import> Session fatigue <span class="hint" data-tip="Gradually slows actions over a session to mimic tiredness.">?</span></span>
+              <div class="rangewrap"><span class="unit">ramp</span><input class="inp inp--center" style="width:54px;" type="number" min="0" max="999" defaultValue="120"><span class="unit">min · max</span><input class="inp inp--center" style="width:46px;" type="number" min="1" max="10" step="0.1" defaultValue="2.0"><span class="unit">x</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===================== LOG ===================== -->
+      <sc-if value="{{ isLog }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:13px;">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid var(--line);">
+            <div class="seg">
+              <sc-for list="{{ logFilters }}" as="f" hint-placeholder-count="5">
+                <button class="{{ f.cls }}" onClick="{{ f.onClick }}" style="display:flex;align-items:center;gap:6px;">{{ f.label }} <span style="font-family:var(--mono);font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:5px;background:rgba(255,255,255,.08);color:var(--txt3);">{{ f.count }}</span></button>
+              </sc-for>
+            </div>
+            <div class="search" style="flex:1;min-width:140px;"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input class="inp" placeholder="Search log…" value="{{ logSearch }}" onInput="{{ setLogSearch }}"></div>
+            <button class="btn btn--danger-soft btn--sm" onClick="{{ onClear }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Clear</button>
+            <button class="btn btn--ghost btn--sm" onClick="{{ onCopy }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>{{ copyLabel }}</button>
+          </div>
+          <div class="console">
+            <sc-for list="{{ filteredLogs }}" as="row" hint-placeholder-count="10">
+              <div class="logline"><span class="logtime">{{ row.time }}</span><span class="loglv" data-l="{{ row.level }}">{{ row.level }}</span><span class="{{ row.msgCls }}">{{ row.msg }}</span></div>
+            </sc-for>
+            <sc-if value="{{ logsEmpty }}" hint-placeholder-val="{{ false }}"><div style="color:var(--txt3);font-style:italic;padding:8px 0;">No matching log entries.</div></sc-if>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="sec-t"><div class="sec-bar" style="background:var(--blue);"></div><span class="sec-l">DEBUG PREVIEWS</span><span class="sec-r">{{ debugCount }} captures</span></div>
+          <div class="dbgrid">
+            <sc-for list="{{ debugShots }}" as="d" hint-placeholder-count="8">
+              <div class="dbg">
+                <div class="thumb" style="aspect-ratio:16/10;"><span class="thumb-l">debug capture</span></div>
+                <div class="dbg-foot"><span style="font-size:10.5px;color:var(--txt2);">{{ d.name }}</span><span style="font-size:9.5px;color:#4a5160;">{{ d.time }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===================== MANUAL ===================== -->
+      <sc-if value="{{ isManual }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:13px;">
+        <div style="display:flex;align-items:center;gap:11px;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:13px;padding:11px 15px;">
+          <svg class="ico" viewBox="0 0 24 24" style="color:var(--amber);"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <span style="font-size:12.5px;color:var(--txt2);"><strong style="color:var(--amber);">Manual mode deploys real troops.</strong> Make sure you're on a base in-game before running an action — these skip matchmaking and loot checks.</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;align-items:start;">
+          <!-- Detect -->
+          <div class="card" style="display:flex;flex-direction:column;gap:13px;">
+            <div style="display:flex;align-items:center;gap:11px;">
+              <div style="width:38px;height:38px;flex:none;border-radius:11px;background:rgba(61,123,255,.12);border:1px solid rgba(61,123,255,.28);display:flex;align-items:center;justify-content:center;color:var(--blue-l);"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
+              <div><div style="font-size:14px;font-weight:800;">Detect Loot</div><div style="font-size:11.5px;color:var(--txt3);">Read the 'Available Loot' panel</div></div>
+            </div>
+            <p style="font-size:12.5px;color:var(--txt2);line-height:1.5;margin:0;">Reads gold, elixir &amp; dark elixir from the current screen without attacking. Safe to run anytime.</p>
+            <button class="{{ detectCls }}" onClick="{{ onDetect }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>{{ detectLabel }}</button>
+          </div>
+
+          <!-- Manual attack -->
+          <div class="card" style="display:flex;flex-direction:column;gap:13px;">
+            <div style="display:flex;align-items:center;gap:11px;">
+              <div style="width:38px;height:38px;flex:none;border-radius:11px;background:rgba(34,194,119,.12);border:1px solid rgba(34,194,119,.28);display:flex;align-items:center;justify-content:center;color:var(--green-l);"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 5v14l11-7z"/></svg></div>
+              <div><div style="font-size:14px;font-weight:800;">Manual Attack</div><div style="font-size:11.5px;color:var(--txt3);">Skips matchmaking + loot search</div></div>
+            </div>
+            <div class="field">
+              <span class="field-l">Deploy side</span>
+              <div class="seg fill">
+                <sc-for list="{{ sideOptions }}" as="o" hint-placeholder-count="4">
+                  <button class="{{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <button class="{{ attackCls }}" onClick="{{ onAttack }}"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 5v14l11-7z"/></svg>{{ attackLabel }}</button>
+          </div>
+        </div>
+
+        <!-- Quick actions + result -->
+        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:13px;align-items:start;">
+          <div class="card">
+            <div class="sec-t"><div class="sec-bar" style="background:var(--txt3);"></div><span class="sec-l">QUICK ACTIONS</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;">
+              <button class="btn btn--ghost" onClick="{{ onReturnHome }}">Return Home</button>
+              <button class="btn btn--ghost" onClick="{{ onOpenGame }}">Open Game</button>
+              <button class="btn btn--ghost" onClick="{{ onSnap }}">Screenshot</button>
+              <button class="btn btn--ghost" onClick="{{ onReload }}">Reload Config</button>
+            </div>
+          </div>
+          <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+            <div class="sec-t" style="margin-bottom:2px;"><div class="sec-bar" style="background: {{ resultBar }};"></div><span class="sec-l">LAST RESULT</span></div>
+            <div style="display:flex;align-items:center;gap:10px;background:var(--inp);border:1px solid var(--line2);border-radius:11px;padding:12px 14px;min-height:48px;">
+              <span class="sdot" style="background: {{ resultBar }};animation:none;"></span>
+              <span style="font-family:var(--mono);font-size:12.5px;color: {{ resultColor }};line-height:1.4;">{{ resultText }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===================== BASES ===================== -->
+      <sc-if value="{{ isBases }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <div class="libbar">
+          <div class="search"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input class="inp" placeholder="Search bases by name or tag…" value="{{ baseSearch }}" onInput="{{ setBaseSearch }}"></div>
+          <div class="selwrap"><select class="sel" value="{{ baseTH }}" onChange="{{ setBaseTH }}"><option value="All">All TH</option><sc-for list="{{ thOptions }}" as="o" hint-placeholder-count="8"><option value="{{ o }}">{{ o }}</option></sc-for></select></div>
+          <div class="selwrap"><select class="sel" value="{{ baseCat }}" onChange="{{ setBaseCat }}"><option value="All">All categories</option><option value="Farming">Farming</option><option value="Trophy">Trophy</option><option value="Hybrid">Hybrid</option><option value="War">War</option><option value="Legend">Legend</option><option value="Progress Base">Progress Base</option></select></div>
+          <div class="selwrap"><select class="sel" value="{{ baseSort }}" onChange="{{ setBaseSort }}"><option value="newest">Newest</option><option value="favorite">Favorites</option><option value="name">Name A–Z</option></select></div>
+          <button class="btn btn--blue" onClick="{{ onAddBase }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add Base</button>
+        </div>
+
+        <sc-if value="{{ basesEmpty }}" hint-placeholder-val="{{ false }}">
+          <div class="card empty">
+            <div class="empty-ic"><svg class="ico" viewBox="0 0 24 24" style="width:24px;height:24px;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+            <div class="empty-t">No bases saved yet</div>
+            <div class="empty-s">Save your favorite Clash of Clans layout links so the bot can copy them on demand.</div>
+            <button class="btn btn--blue" onClick="{{ onAddBase }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add your first base</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ basesShown }}" hint-placeholder-val="{{ true }}">
+          <div class="grid">
+            <sc-for list="{{ baseCards }}" as="b" hint-placeholder-count="6">
+              <div class="lcard">
+                <div class="thumb">
+                  <span class="thumb-l">base layout</span>
+                  <span class="thumb-tl th-badge">{{ b.thLabel }}</span>
+                  <button class="star thumb-tr" data-on="{{ b.fav }}" onClick="{{ b.onFav }}">★</button>
+                </div>
+                <div class="lcard-body">
+                  <div class="lcard-title">{{ b.name }}</div>
+                  <div class="lcard-meta"><span class="cat" data-c="{{ b.category }}">{{ b.category }}</span><span class="chip">{{ b.thLabel }}</span></div>
+                  <div class="lcard-tags"><sc-for list="{{ b.tags }}" as="tg" hint-placeholder-count="2"><span class="chip">#{{ tg }}</span></sc-for></div>
+                </div>
+                <div class="lcard-foot">
+                  <button class="btn btn--blue-soft btn--sm" onClick="{{ b.onCopy }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy</button>
+                  <button class="icobtn" title="Open link" onClick="{{ b.onOpen }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg></button>
+                  <button class="icobtn" title="Edit" onClick="{{ b.onEdit }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+                  <button class="icobtn del" title="Delete" onClick="{{ b.onDelete }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+                  <span class="lastcopy">{{ b.lastCopied }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- ===================== ARMIES ===================== -->
+      <sc-if value="{{ isArmies }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <div class="libbar">
+          <div class="search"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input class="inp" placeholder="Search armies by name or troop…" value="{{ armySearch }}" onInput="{{ setArmySearch }}"></div>
+          <div class="selwrap"><select class="sel" value="{{ armyTH }}" onChange="{{ setArmyTH }}"><option value="All">All TH</option><sc-for list="{{ thOptions }}" as="o" hint-placeholder-count="8"><option value="{{ o }}">{{ o }}</option></sc-for></select></div>
+          <div class="selwrap"><select class="sel" value="{{ armyPurpose }}" onChange="{{ setArmyPurpose }}"><option value="All">All purposes</option><option value="Farming">Farming</option><option value="War">War</option><option value="Trophy">Trophy</option><option value="Donation">Donation</option><option value="Fun">Fun</option></select></div>
+          <div class="selwrap"><select class="sel" value="{{ armySort }}" onChange="{{ setArmySort }}"><option value="newest">Newest</option><option value="favorite">Favorites</option><option value="name">Name A–Z</option></select></div>
+          <button class="btn btn--blue" onClick="{{ onAddArmy }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add Army</button>
+        </div>
+
+        <sc-if value="{{ armiesEmpty }}" hint-placeholder-val="{{ false }}">
+          <div class="card empty">
+            <div class="empty-ic"><svg class="ico" viewBox="0 0 24 24" style="width:24px;height:24px;"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg></div>
+            <div class="empty-t">No armies saved yet</div>
+            <div class="empty-s">Save army copy links and farming presets to train them with one click.</div>
+            <button class="btn btn--blue" onClick="{{ onAddArmy }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add your first army</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ armiesShown }}" hint-placeholder-val="{{ true }}">
+          <div class="grid">
+            <sc-for list="{{ armyCards }}" as="a" hint-placeholder-count="5">
+              <div class="lcard">
+                <div class="lcard-body" style="gap:11px;">
+                  <div style="display:flex;align-items:flex-start;gap:8px;">
+                    <div style="flex:1;min-width:0;">
+                      <div class="lcard-title">{{ a.name }}</div>
+                      <div class="lcard-meta" style="margin-top:6px;"><span class="cat" data-c="{{ a.purpose }}">{{ a.purpose }}</span><span class="chip">{{ a.thLabel }}</span><sc-if value="{{ a.isActive }}" hint-placeholder-val="{{ false }}"><span class="active-pill">● Active</span></sc-if><sc-if value="{{ a.donations }}" hint-placeholder-val="{{ false }}"><span class="chip" style="color:var(--blue-l);border-color:rgba(61,123,255,.3);">Donations</span></sc-if></div>
+                    </div>
+                    <button class="star" data-on="{{ a.fav }}" onClick="{{ a.onFav }}" style="background:rgba(255,255,255,.05);">★</button>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <div class="kv"><span class="kv-k">Troops</span><span class="kv-v">{{ a.troops }}</span></div>
+                    <div class="kv"><span class="kv-k">Spells</span><span class="kv-v">{{ a.spells }}</span></div>
+                    <div class="kv"><span class="kv-k">Siege</span><span class="kv-v">{{ a.siege }}</span></div>
+                    <div class="kv"><span class="kv-k">Heroes</span><span class="kv-v">{{ a.notes }}</span></div>
+                  </div>
+                  <sc-if value="{{ a.hasTags }}" hint-placeholder-val="{{ false }}"><div class="lcard-tags"><sc-for list="{{ a.tags }}" as="tg" hint-placeholder-count="2"><span class="chip">#{{ tg }}</span></sc-for></div></sc-if>
+                </div>
+                <div class="lcard-foot" style="flex-wrap:wrap;">
+                  <button class="btn btn--blue-soft btn--sm" onClick="{{ a.onCopy }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy</button>
+                  <button class="btn btn--ghost btn--sm {{ a.activeCls }}" onClick="{{ a.onSetActive }}">{{ a.activeLabel }}</button>
+                  <button class="icobtn" title="Open link" onClick="{{ a.onOpen }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg></button>
+                  <button class="icobtn" title="Edit" onClick="{{ a.onEdit }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+                  <button class="icobtn del" title="Delete" onClick="{{ a.onDelete }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+    </div>
+  </main>
+
+  <!-- Unsaved bar -->
+  <sc-if value="{{ dirty }}" hint-placeholder-val="{{ false }}">
+    <div class="unsaved">
+      <span class="u-d"></span>
+      <span class="u-t">Unsaved changes</span>
+      <button class="btn btn--ghost btn--sm" onClick="{{ onDiscard }}">Discard</button>
+      <button class="btn btn--blue btn--sm" onClick="{{ onSaveSettings }}">Save</button>
+    </div>
+  </sc-if>
+
+  <!-- Toast -->
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+    <div class="toastwrap"><div class="toast" data-t="{{ toastType }}"><span class="toast-dot"></span><span class="toast-m">{{ toastMsg }}</span></div></div>
+  </sc-if>
+
+  <!-- Confirm dialog -->
+  <sc-if value="{{ hasConfirm }}" hint-placeholder-val="{{ false }}">
+    <div class="overlay" onClick="{{ onConfirmNo }}">
+      <div class="modal confirm" onClick="{{ stop }}">
+        <div class="confirm-b">
+          <div class="confirm-ic" style="{{ confirmIcStyle }}">
+            <sc-if value="{{ confirmIsAttack }}" hint-placeholder-val="{{ false }}"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 5v14l11-7z"/></svg></sc-if>
+            <sc-if value="{{ confirmIsDelete }}" hint-placeholder-val="{{ true }}"><svg class="ico" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></sc-if>
+          </div>
+          <div><div class="confirm-t">{{ confirmTitle }}</div><div class="confirm-m">{{ confirmMsg }}</div></div>
+        </div>
+        <div class="modal-f"><button class="btn btn--ghost" onClick="{{ onConfirmNo }}">Cancel</button><button class="{{ confirmYesCls }}" onClick="{{ onConfirmYes }}">{{ confirmYesLabel }}</button></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Modal: base / army form -->
+  <sc-if value="{{ hasModal }}" hint-placeholder-val="{{ false }}">
+    <div class="overlay" onClick="{{ onCloseModal }}">
+      <div class="modal" onClick="{{ stop }}">
+        <div class="modal-h"><span class="modal-t">{{ modalTitle }}</span><button class="modal-x" onClick="{{ onCloseModal }}">✕</button></div>
+        <div class="modal-b">
+          <sc-if value="{{ formError }}" hint-placeholder-val="{{ false }}"><div class="form-err"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>{{ formError }}</div></sc-if>
+
+          <!-- BASE form -->
+          <sc-if value="{{ isBaseModal }}" hint-placeholder-val="{{ true }}">
+            <div class="form-grid">
+              <div class="field span2"><span class="field-l">Base name</span><input class="inp" style="font-family:var(--sans);" placeholder="e.g. Dead Base Trap" value="{{ f.name }}" onInput="{{ setF.name }}"></div>
+              <div class="field"><span class="field-l">Town Hall</span><div class="selwrap"><select class="sel" value="{{ f.th }}" onChange="{{ setF.th }}"><sc-for list="{{ thOptions }}" as="o" hint-placeholder-count="8"><option value="{{ o }}">{{ o }}</option></sc-for></select></div></div>
+              <div class="field"><span class="field-l">Category</span><div class="selwrap"><select class="sel" value="{{ f.category }}" onChange="{{ setF.category }}"><option value="Farming">Farming</option><option value="Trophy">Trophy</option><option value="Hybrid">Hybrid</option><option value="War">War</option><option value="Legend">Legend</option><option value="Progress Base">Progress Base</option></select></div></div>
+              <div class="field span2"><span class="field-l">Base link <span class="hint" data-tip="Must be a https://link.clashofclans.com OpenLayout link.">?</span></span><input class="inp" placeholder="https://link.clashofclans.com/?action=OpenLayout&id=…" value="{{ f.link }}" onInput="{{ setF.link }}"></div>
+              <div class="field span2"><span class="field-l">Tags <span class="unit">comma separated</span></span><input class="inp" style="font-family:var(--sans);" placeholder="anti-air, easy loot" value="{{ f.tags }}" onInput="{{ setF.tags }}"></div>
+              <div class="field span2"><span class="field-l">Notes</span><textarea class="ta" placeholder="Optional notes…" value="{{ f.notes }}" onInput="{{ setF.notes }}"></textarea></div>
+            </div>
+          </sc-if>
+
+          <!-- ARMY form -->
+          <sc-if value="{{ isArmyModal }}" hint-placeholder-val="{{ true }}">
+            <div class="form-grid">
+              <div class="field span2"><span class="field-l">Army name</span><input class="inp" style="font-family:var(--sans);" placeholder="e.g. E-Drag Spam" value="{{ f.name }}" onInput="{{ setF.name }}"></div>
+              <div class="field"><span class="field-l">Town Hall</span><div class="selwrap"><select class="sel" value="{{ f.th }}" onChange="{{ setF.th }}"><sc-for list="{{ thOptions }}" as="o" hint-placeholder-count="8"><option value="{{ o }}">{{ o }}</option></sc-for></select></div></div>
+              <div class="field"><span class="field-l">Purpose</span><div class="selwrap"><select class="sel" value="{{ f.purpose }}" onChange="{{ setF.purpose }}"><option value="Farming">Farming</option><option value="War">War</option><option value="Trophy">Trophy</option><option value="Donation">Donation</option><option value="Fun">Fun</option></select></div></div>
+              <div class="field span2"><span class="field-l">Army link <span class="hint" data-tip="Must be a https://link.clashofclans.com CopyArmy link.">?</span></span><input class="inp" placeholder="https://link.clashofclans.com/?action=CopyArmy&army=…" value="{{ f.link }}" onInput="{{ setF.link }}"></div>
+              <div class="field"><span class="field-l">Troops</span><input class="inp" style="font-family:var(--sans);" placeholder="e.g. 11× E-Drag" value="{{ f.troops }}" onInput="{{ setF.troops }}"></div>
+              <div class="field"><span class="field-l">Spells</span><input class="inp" style="font-family:var(--sans);" placeholder="e.g. 3× Lightning" value="{{ f.spells }}" onInput="{{ setF.spells }}"></div>
+              <div class="field"><span class="field-l">Siege machine</span><input class="inp" style="font-family:var(--sans);" placeholder="e.g. Log Launcher" value="{{ f.siege }}" onInput="{{ setF.siege }}"></div>
+              <div class="field"><span class="field-l">Tags</span><input class="inp" style="font-family:var(--sans);" placeholder="fast, cheap" value="{{ f.tags }}" onInput="{{ setF.tags }}"></div>
+              <div class="field span2"><div class="togrow"><span class="lab">Donations allowed</span><dc-import name="Toggle" on="{{ f.donations }}" on-toggle="{{ toggleFormDonations }}" hint-size="40px,23px"></dc-import></div></div>
+              <div class="field span2"><span class="field-l">Hero / equipment notes</span><textarea class="ta" placeholder="Hero & equipment notes…" value="{{ f.notes }}" onInput="{{ setF.notes }}"></textarea></div>
+            </div>
+          </sc-if>
+        </div>
+        <div class="modal-f"><button class="btn btn--ghost" onClick="{{ onCloseModal }}">Cancel</button><button class="btn btn--blue" onClick="{{ onSaveItem }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>{{ saveLabel }}</button></div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:720},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#3d7bff&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;confirmBeforeAttack&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = {
+    activeTab: 'settings', running: false, seconds: 0, cycle: 0,
+    strategy: 'Random', side: 'Random', logFilter: 'All', logSearch: '',
+    copied: false, dirty: false,
+    busy: { detect: false, attack: false },
+    result: { text: 'No action run yet.', type: 'idle' },
+    toast: null, confirm: null, modal: null, editId: null, form: {}, formError: '',
+    activePreset: 'E-Drag Spam',
+    s: { donations: true, logFile: false, splash: true, debug: true, eventDump: false, randomEvents: true, fatigue: true },
+    logs: [
+      { time: '14:02:11', level: 'INFO', msg: 'Bot initialized — config loaded from settings.json' },
+      { time: '14:02:11', level: 'INFO', msg: 'Army preset: E-Drag Spam (11 units)' },
+      { time: '14:02:13', level: 'DEBUG', msg: 'Screen capture 1280x720 @ device 0' },
+      { time: '14:02:14', level: 'INFO', msg: 'Searching for base — attempt 1 / 20' },
+      { time: '14:02:18', level: 'DEBUG', msg: 'OCR loot read: gold=842k elixir=901k de=4.2k' },
+      { time: '14:02:18', level: 'WARNING', msg: 'Total loot 1.74M below min remaining buffer — skipping' },
+      { time: '14:02:21', level: 'INFO', msg: 'Searching for base — attempt 2 / 20' },
+      { time: '14:02:27', level: 'INFO', msg: 'Match found — total loot 2.31M, deploying' },
+      { time: '14:02:41', level: 'DEBUG', msg: 'Deploy side=top-left, 11 units released over 2.3s' },
+      { time: '14:03:09', level: 'INFO', msg: 'Attack complete — 68% destruction, 1 star' },
+      { time: '14:03:10', level: 'ERROR', msg: 'Reconnect prompt detected — retrying in 5s' },
+      { time: '14:03:16', level: 'INFO', msg: 'Reconnected successfully, resuming cycle' }
+    ],
+    bases: [
+      { id: 7, name: 'TH18 Progress Hold', th: 18, category: 'Progress Base', tags: ['new-th18', 'defensive'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH18:HV:PRG8', notes: 'Safe progress layout.', fav: false, lastCopied: 'never', added: 7 },
+      { id: 1, name: 'Dead Base Trap', th: 13, category: 'Farming', tags: ['collectors-out', 'easy-loot'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH13:HV:LVJJ', notes: 'Lures collectors to edges.', fav: true, lastCopied: '2d ago', added: 6 },
+      { id: 2, name: 'Anti-3 War Core', th: 15, category: 'War', tags: ['anti-edrag', 'cc-bait'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH15:HV:WAR1', notes: '', fav: false, lastCopied: '1w ago', added: 5 },
+      { id: 3, name: 'Trophy Ring', th: 14, category: 'Trophy', tags: ['centralized-th'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH14:HV:TR0P', notes: '', fav: false, lastCopied: '5d ago', added: 4 },
+      { id: 4, name: 'Hybrid Sweeper', th: 12, category: 'Hybrid', tags: ['balanced'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH12:HV:HYBR', notes: '', fav: false, lastCopied: '3w ago', added: 3 },
+      { id: 5, name: 'Legend Anti-Air', th: 16, category: 'Legend', tags: ['anti-air', 'ring-base'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH16:HV:LEG9', notes: 'Pushes 6k+ trophies.', fav: true, lastCopied: '1d ago', added: 2 },
+      { id: 6, name: 'Goblin Knife Farm', th: 11, category: 'Farming', tags: ['open-core'], link: 'https://link.clashofclans.com/?action=OpenLayout&id=TH11:HV:GBKN', notes: '', fav: false, lastCopied: 'never', added: 1 }
+    ],
+    armies: [
+      { id: 6, name: 'TH18 Root Rider Smash', purpose: 'War', th: 18, troops: '18× Root Rider, 4× Healer', spells: '5× Rage, 2× Freeze', siege: 'Battle Drill', notes: 'King · Queen · Warden · Champion · RC', donations: false, tags: ['th18', 'smash'], link: 'https://link.clashofclans.com/?action=CopyArmy&army=u18x0', fav: false, lastCopied: 'never', added: 6 },
+      { id: 1, name: 'E-Drag Spam', purpose: 'War', th: 15, troops: '11× Electro Dragon, 1× Balloon', spells: '3× Lightning, 1× Rage', siege: 'Log Launcher', notes: 'King · Queen · Warden · Champion', donations: false, tags: ['spam', 'easy'], link: 'https://link.clashofclans.com/?action=CopyArmy&army=u11x90', fav: true, lastCopied: '1d ago', added: 5 },
+      { id: 2, name: 'Barch Farm', purpose: 'Farming', th: 11, troops: '80× Archer, 60× Barbarian', spells: '2× Heal', siege: 'None', notes: 'King · Queen', donations: true, tags: ['fast', 'cheap'], link: 'https://link.clashofclans.com/?action=CopyArmy&army=u0x80', fav: true, lastCopied: '3h ago', added: 4 },
+      { id: 3, name: 'Super Archer Blimp', purpose: 'War', th: 14, troops: '8× Super Archer, 4× Healer', spells: '2× Rage, 2× Invis', siege: 'Siege Barracks', notes: 'Queen Charge', donations: false, tags: ['blimp'], link: 'https://link.clashofclans.com/?action=CopyArmy&army=u8x26', fav: false, lastCopied: '1w ago', added: 3 },
+      { id: 4, name: 'Hog Rider Rush', purpose: 'Trophy', th: 13, troops: '24× Hog Rider, 8× Wizard', spells: '4× Heal, 1× Poison', siege: 'Battle Blimp', notes: 'King · Queen · Warden', donations: false, tags: ['hogs'], link: 'https://link.clashofclans.com/?action=CopyArmy&army=u24x90', fav: false, lastCopied: '2w ago', added: 2 },
+      { id: 5, name: 'Donation Maxers', purpose: 'Donation', th: 16, troops: 'Max mix for clan requests', spells: '—', siege: '—', notes: '—', donations: true, tags: ['clan'], link: 'https://link.clashofclans.com/?action=CopyArmy&army=u0x0', fav: false, lastCopied: 'never', added: 1 }
+    ],
+    baseSearch: '', baseTH: 'All', baseCat: 'All', baseSort: 'newest',
+    armySearch: '', armyTH: 'All', armyPurpose: 'All', armySort: 'newest'
+  };
+
+  componentDidMount() {
+    try { const b = localStorage.getItem('cocfb_bases'), a = localStorage.getItem('cocfb_armies'); const patch = {}; if (b) patch.bases = JSON.parse(b); if (a) patch.armies = JSON.parse(a); if (Object.keys(patch).length) this.setState(patch); } catch (e) {}
+    this._timer = setInterval(() => { if (this.state.running) this.setState(st => ({ seconds: st.seconds + 1 })); }, 1000);
+    this.loadBackendState();
+    this._bridgePoll = setInterval(() => this.pollBackend(), 250);
+  }
+  componentDidUpdate() { this.persist(); }
+  componentWillUnmount() { clearInterval(this._timer); clearInterval(this._bridgePoll); clearTimeout(this._toast); clearTimeout(this._cp); }
+
+  fmt(sec) { const h = Math.floor(sec / 3600), m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0'), s = String(sec % 60).padStart(2, '0'); return `${h}:${m}:${s}`; }
+  toggle(k) { this.setState(st => ({ s: { ...st.s, [k]: !st.s[k] }, dirty: true })); }
+  showToast(msg, type = 'success') { this.setState({ toast: { msg, type } }); clearTimeout(this._toast); this._toast = setTimeout(() => this.setState({ toast: null }), 2200); }
+  persist() { try { localStorage.setItem('cocfb_bases', JSON.stringify(this.state.bases)); localStorage.setItem('cocfb_armies', JSON.stringify(this.state.armies)); } catch (e) {} }
+  pushLog(level, msg) { const d = new Date(); const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; this.setState(st => ({ logs: [...st.logs, { time: t, level, msg }] })); }
+
+  api() { return window.pywebview && window.pywebview.api ? window.pywebview.api : null; }
+  async callApi(name, ...args) {
+    const api = this.api();
+    if (!api || !api[name]) { this.pushLog('ERROR', 'Python bridge is not available'); this.showToast('Python bridge unavailable', 'error'); return null; }
+    try { return await api[name](...args); }
+    catch (e) { const msg = e && e.message ? e.message : String(e); this.pushLog('ERROR', msg); this.showToast(msg, 'error'); return null; }
+  }
+  async loadBackendState() {
+    const data = await this.callApi('initial_state');
+    if (!data) return;
+    const patch = {};
+    if (Array.isArray(data.bases)) patch.bases = data.bases;
+    if (Array.isArray(data.armies)) patch.armies = data.armies;
+    if (data.settings) this.applySettings(data.settings);
+    if (Object.keys(patch).length) this.setState(patch);
+    this.pushLog('INFO', 'Backend connected');
+  }
+  async pollBackend() {
+    const events = await this.callApi('drain_events');
+    if (!Array.isArray(events)) return;
+    events.forEach(e => this.applyBackendEvent(e));
+  }
+  applyBackendEvent(e) {
+    if (!e || !e.kind) return;
+    if (e.kind === 'log') this.pushLog(this.levelName(e.level), e.text || '');
+    else if (e.kind === 'status') this.setState({ running: !!e.running });
+    else if (e.kind === 'bot_event') this.applyBotEvent(e.event || {});
+    else if (e.kind === 'update_result') this.applyUpdateResult(e.info, e.error);
+    else if (e.kind === 'copy_link') this.copyText(e.link || '');
+    else if (e.kind === 'process_exit') this.pushLog('DEBUG', `Bot process exited with code ${e.code}`);
+  }
+  applyBotEvent(e) {
+    if (e.type === 'cycle_start') this.setState({ cycle: e.n || 0 });
+    if (e.type === 'step') this.setState({ result: { text: e.label || 'Working', type: 'idle' } });
+    if (e.type === 'attack_complete') this.pushLog('INFO', `Attack cycle ${e.cycle} complete`);
+  }
+  applyUpdateResult(info, error) {
+    if (error) { this.pushLog('ERROR', `Update check failed: ${error}`); this.showToast('Update check failed', 'error'); return; }
+    if (!info) { this.pushLog('INFO', 'Already up to date'); this.showToast('Already up to date', 'info'); return; }
+    this.pushLog('INFO', `Update available: v${info.version}`);
+    this.showToast(`Update available: v${info.version}`, 'info');
+  }
+  levelName(level) {
+    const x = String(level || 'INFO').toUpperCase();
+    if (x === 'ERROR' || x === 'WARNING' || x === 'DEBUG') return x;
+    return 'INFO';
+  }
+  copyText(text) {
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+    this.showToast('Link copied');
+  }
+  settingsPayload() {
+    const s = this.state.s || {};
+    const byLabel = {};
+    document.querySelectorAll('.field').forEach(f => {
+      const label = (f.querySelector('.field-l')?.textContent || '').replace('?','').trim();
+      const inputs = [...f.querySelectorAll('input,select')];
+      if (label && inputs.length) byLabel[label] = inputs.map(x => x.value);
+    });
+    document.querySelectorAll('.togrow').forEach(f => {
+      const label = (f.querySelector('.lab')?.textContent || '').replace('?','').trim();
+      const inputs = [...f.querySelectorAll('input,select')];
+      if (label && inputs.length) byLabel[label] = inputs.map(x => x.value);
+    });
+    const first = (label, fallback) => (byLabel[label] && byLabel[label][0]) || fallback;
+    const second = (label, fallback) => (byLabel[label] && byLabel[label][1]) || fallback;
+    return {
+      attack_side: this.state.strategy,
+      donate: !!s.donations,
+      log_file: !!s.logFile,
+      splash_enabled: !!s.splash,
+      debug_screenshots: !!s.debug,
+      dump_mode: !!s.eventDump,
+      random_events: !!s.randomEvents,
+      fatigue: !!s.fatigue,
+      army_preset: first('Army preset', this.state.activePreset),
+      min_loot: first('Min total loot', '1500000'),
+      min_remaining: first('Min remaining', '100000'),
+      min_gold: first('Min Gold', '0'),
+      min_elixir: first('Min Elixir', '0'),
+      min_de: first('Min Dark Elixir', '0'),
+      max_search: first('Max searches', '20'),
+      reconnect_wait: first('Reconnect', '300'),
+      break_every_min: first('Break every min', '60'),
+      break_every_max: second('Break every min', '120'),
+      break_dur_min: first('Duration min', '4'),
+      break_dur_max: second('Duration min', '16'),
+      skip_min: first('Search skip s', '0'),
+      skip_max: second('Search skip s', '6'),
+      skip_long_min: first('Long skip s', '5'),
+      skip_long_max: second('Long skip s', '15'),
+      skip_long_chance: first('Long chance', '0.15'),
+      post_attack_min: first('Post delay s', '3'),
+      post_attack_max: second('Post delay s', '20'),
+      event_every_min: first('Random events', '3'),
+      event_every_max: second('Random events', '10'),
+      fatigue_ramp: first('Session fatigue', '120'),
+      fatigue_max: second('Session fatigue', '2.0'),
+      max_cycles: document.querySelector('.cyc-inp')?.value || '0'
+    };
+  }
+  applySettings(cfg) {
+    const s = { ...this.state.s };
+    if ('donate' in cfg) s.donations = !!cfg.donate;
+    if ('log_file' in cfg) s.logFile = !!cfg.log_file;
+    if ('splash_enabled' in cfg) s.splash = !!cfg.splash_enabled;
+    if ('debug_screenshots' in cfg) s.debug = !!cfg.debug_screenshots;
+    if ('dump_mode' in cfg) s.eventDump = !!cfg.dump_mode;
+    if ('random_events' in cfg) s.randomEvents = !!cfg.random_events;
+    if ('fatigue' in cfg) s.fatigue = !!cfg.fatigue;
+    const patch = { s, dirty: false };
+    if (cfg.attack_side) patch.strategy = cfg.attack_side;
+    if (cfg.army_preset) patch.activePreset = cfg.army_preset;
+    this.setState(patch);
+    setTimeout(() => {
+      const map = {
+        'Army preset': [cfg.army_preset],
+        'Min total loot': [cfg.min_loot],
+        'Min remaining': [cfg.min_remaining],
+        'Min Gold': [cfg.min_gold],
+        'Min Elixir': [cfg.min_elixir],
+        'Min Dark Elixir': [cfg.min_de],
+        'Max searches': [cfg.max_search],
+        'Reconnect': [cfg.reconnect_wait],
+        'Break every min': [cfg.break_every_min, cfg.break_every_max],
+        'Duration min': [cfg.break_dur_min, cfg.break_dur_max],
+        'Search skip s': [cfg.skip_min, cfg.skip_max],
+        'Long skip s': [cfg.skip_long_min, cfg.skip_long_max],
+        'Long chance': [cfg.skip_long_chance],
+        'Post delay s': [cfg.post_attack_min, cfg.post_attack_max],
+        'Random events': [cfg.event_every_min, cfg.event_every_max],
+        'Session fatigue': [cfg.fatigue_ramp, cfg.fatigue_max]
+      };
+      document.querySelectorAll('.field').forEach(f => {
+        const label = (f.querySelector('.field-l')?.textContent || '').replace('?','').trim();
+        const inputs = [...f.querySelectorAll('input,select')];
+        if (inputs.length && map[label] !== undefined) inputs.forEach((input, i) => { if (map[label][i] !== undefined) input.value = map[label][i]; });
+      });
+      document.querySelectorAll('.togrow').forEach(f => {
+        const label = (f.querySelector('.lab')?.textContent || '').replace('?','').trim();
+        const inputs = [...f.querySelectorAll('input,select')];
+        if (inputs.length && map[label] !== undefined) inputs.forEach((input, i) => { if (map[label][i] !== undefined) input.value = map[label][i]; });
+      });
+      const cyc = document.querySelector('.cyc-inp'); if (cyc && cfg.max_cycles !== undefined) cyc.value = cfg.max_cycles;
+    }, 0);
+  }
+
+  setField(k, v) { this.setState(st => ({ form: { ...st.form, [k]: v }, formError: '' })); }
+  toggleFormDonations() { this.setState(st => ({ form: { ...st.form, donations: !st.form.donations } })); }
+  openModal(kind, item) {
+    const lastTH = this.state.lastTH || 'TH18';
+    const f = item ? { ...item, tags: (item.tags || []).join(', ') } : (kind === 'base' ? { name: '', th: lastTH, category: 'Farming', link: '', tags: '', notes: '' } : { name: '', th: lastTH, purpose: 'War', link: '', troops: '', spells: '', siege: '', notes: '', tags: '', donations: false });
+    if (item) f.th = 'TH' + item.th;
+    this.setState({ modal: kind, editId: item ? item.id : null, form: f, formError: '' });
+  }
+  closeModal() { this.setState({ modal: null, editId: null, formError: '' }); }
+  validLink(kind, link) { return /^https:\/\/link\.clashofclans\.com\//i.test(link || '') && (link || '').includes(kind === 'base' ? 'action=OpenLayout' : 'action=CopyArmy'); }
+  saveItem() {
+    const { modal, form, editId } = this.state;
+    if (!form.name || !form.name.trim()) { this.setState({ formError: 'Please enter a name.' }); return; }
+    if (!this.validLink(modal, form.link)) { this.setState({ formError: modal === 'base' ? 'Enter a valid Clash of Clans layout link (link.clashofclans.com … OpenLayout).' : 'Enter a valid Clash of Clans army link (link.clashofclans.com … CopyArmy).' }); return; }
+    const th = parseInt(String(form.th).replace('TH', ''), 10) || 13;
+    const tags = (form.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+    const listKey = modal === 'base' ? 'bases' : 'armies';
+    const list = this.state[listKey];
+    let _a;
+    if (editId) {
+      _a = list.map(x => x.id === editId ? { ...x, ...form, th, tags } : x);
+    } else {
+      const id = Math.max(0, ...list.map(x => x.id)) + 1;
+      const added = Math.max(0, ...list.map(x => x.added)) + 1;
+      _a = [{ id, added, fav: false, lastCopied: 'never', ...form, th, tags }, ...list];
+    }
+    try { localStorage.setItem(listKey === 'bases' ? 'cocfb_bases' : 'cocfb_armies', JSON.stringify(_a)); } catch (e) {}
+    this.setState({ [listKey]: _a, modal: null, editId: null, formError: '', lastTH: 'TH' + th });
+    this.callApi('save_library', listKey, _a);
+    this.showToast(modal === 'base' ? (editId ? 'Base updated' : 'Base saved') : (editId ? 'Army updated' : 'Army saved'));
+  }
+  askDelete(kind, id, name) {
+    this.setState({ confirm: { kind, id, title: `Delete ${kind === 'base' ? 'base' : 'army'}?`, msg: `"${name}" will be permanently removed from your library. This can't be undone.` } });
+  }
+  doDelete() {
+    const c = this.state.confirm; if (!c) return;
+    const listKey = c.kind === 'base' ? 'bases' : 'armies';
+    const _a = this.state[listKey].filter(x => x.id !== c.id); try { localStorage.setItem(listKey === 'bases' ? 'cocfb_bases' : 'cocfb_armies', JSON.stringify(_a)); } catch (e) {} this.setState({ [listKey]: _a, confirm: null }); this.callApi('save_library', listKey, _a);
+    this.showToast(`${c.kind === 'base' ? 'Base' : 'Army'} deleted`, 'error');
+  }
+  copyItem(kind, item) {
+    this.callApi('copy_link', item.link);
+    const listKey = kind === 'base' ? 'bases' : 'armies';
+    const _a = this.state[listKey].map(x => x.id === item.id ? { ...x, lastCopied: 'just now' } : x); try { localStorage.setItem(listKey === 'bases' ? 'cocfb_bases' : 'cocfb_armies', JSON.stringify(_a)); } catch (e) {} this.setState({ [listKey]: _a }); this.callApi('save_library', listKey, _a);
+    this.showToast(`${kind === 'base' ? 'Base' : 'Army'} link copied`);
+  }
+  toggleFav(kind, id) { const k = kind === 'base' ? 'bases' : 'armies'; const _a = this.state[k].map(x => x.id === id ? { ...x, fav: !x.fav } : x); try { localStorage.setItem(k === 'bases' ? 'cocfb_bases' : 'cocfb_armies', JSON.stringify(_a)); } catch (e) {} this.setState({ [k]: _a }); this.callApi('save_library', k, _a); }
+  openLink(link) { this.callApi('open_link', link); this.showToast('Opening link…', 'info'); }
+  setActive(army) { this.setState({ activePreset: army.name }); this.showToast(`"${army.name}" set as active preset`); }
+
+  runDetect() {
+    if (this.state.busy.detect) return;
+    this.setState(st => ({ busy: { ...st.busy, detect: true } }));
+    this.pushLog('DEBUG', 'Manual: reading Available Loot panel…');
+    this.callApi('run_tool', 'detect_loot', { settings: this.settingsPayload() }).then(() => {
+      this.setState(st => ({ busy: { ...st.busy, detect: false }, result: { text: 'Detect loot started', type: 'success' } }));
+    });
+  }
+  runAttack() {
+    if (this.state.busy.attack) return;
+    this.setState(st => ({ busy: { ...st.busy, attack: true } }));
+    this.pushLog('INFO', `Manual attack — deploying from side: ${this.state.side}`);
+    this.callApi('run_tool', 'manual_attack', { side: this.state.side, settings: this.settingsPayload() }).then(() => {
+      this.setState(st => ({ busy: { ...st.busy, attack: false }, result: { text: `Manual attack requested — side ${this.state.side}`, type: 'success' } }));
+    });
+  }
+
+  segCls(active) { return active ? 'seg-b active' : 'seg-b'; }
+
+  renderVals() {
+    const st = this.state;
+    const accent = this.props.accentColor || '#3d7bff';
+    const confirmBeforeAttack = this.props.confirmBeforeAttack ?? true;
+    const appStyle = '--blue:' + accent + ';';
+    const thOptions = ['TH18','TH17','TH16','TH15','TH14','TH13','TH12','TH11','TH10','TH9'];
+
+    const tabDefs = [['Settings','settings'],['Bases','bases'],['Armies','armies'],['Log','log'],['Manual','manual']];
+    const tabs = tabDefs.map(([label,key]) => ({ label, cls: st.activeTab === key ? 'tab active' : 'tab', onClick: () => this.setState({ activeTab: key }) }));
+
+    const stratNames = ['Random','Top left','Top right','Bottom right'];
+    const strategyOptions = stratNames.map(n => ({ label: n, cls: this.segCls(st.strategy === n), onClick: () => this.setState({ strategy: n, dirty: true }) }));
+    const sideOptions = stratNames.map(n => ({ label: n, cls: this.segCls(st.side === n), onClick: () => this.setState({ side: n }) }));
+
+    const counts = { All: st.logs.length };
+    ['INFO','WARNING','ERROR','DEBUG'].forEach(l => counts[l] = st.logs.filter(x => x.level === l).length);
+    const fDefs = [['All','All'],['Info','INFO'],['Warning','WARNING'],['Error','ERROR'],['Debug','DEBUG']];
+    const logFilters = fDefs.map(([label,key]) => ({ label, count: counts[key] ?? 0, cls: st.logFilter === key ? 'seg-b active' : 'seg-b', onClick: () => this.setState({ logFilter: key }) }));
+    const q = st.logSearch.trim().toLowerCase();
+    const filteredLogs = st.logs
+      .filter(r => st.logFilter === 'All' || r.level === st.logFilter)
+      .filter(r => !q || r.msg.toLowerCase().includes(q) || r.time.includes(q))
+      .map(r => ({ time: r.time, level: r.level, msg: r.msg, msgCls: r.level === 'ERROR' ? 'logmsg err' : 'logmsg' }));
+
+    const debugShots = Array.from({ length: 8 }, (_, i) => ({ name: `cap_${String(i + 1).padStart(3, '0')}.png`, time: `14:0${i % 6}:${String((i * 7) % 60).padStart(2, '0')}` }));
+
+    // bases
+    const bq = st.baseSearch.trim().toLowerCase();
+    let bf = st.bases.filter(b =>
+      (st.baseTH === 'All' || ('TH' + b.th) === st.baseTH) &&
+      (st.baseCat === 'All' || b.category === st.baseCat) &&
+      (!bq || b.name.toLowerCase().includes(bq) || (b.tags || []).some(t => t.toLowerCase().includes(bq)))
+    );
+    bf = [...bf].sort((a, b) => st.baseSort === 'name' ? a.name.localeCompare(b.name) : st.baseSort === 'favorite' ? (b.fav - a.fav) || (b.added - a.added) : (b.added - a.added));
+    const baseCards = bf.map(b => ({
+      name: b.name, thLabel: 'TH' + b.th, category: b.category, tags: b.tags || [], fav: b.fav, lastCopied: b.lastCopied,
+      onFav: () => this.toggleFav('base', b.id), onCopy: () => this.copyItem('base', b), onOpen: () => this.openLink(b.link),
+      onEdit: () => this.openModal('base', b), onDelete: () => this.askDelete('base', b.id, b.name)
+    }));
+
+    // armies
+    const aq = st.armySearch.trim().toLowerCase();
+    let af = st.armies.filter(a =>
+      (st.armyTH === 'All' || ('TH' + a.th) === st.armyTH) &&
+      (st.armyPurpose === 'All' || a.purpose === st.armyPurpose) &&
+      (!aq || a.name.toLowerCase().includes(aq) || (a.troops || '').toLowerCase().includes(aq))
+    );
+    af = [...af].sort((a, b) => st.armySort === 'name' ? a.name.localeCompare(b.name) : st.armySort === 'favorite' ? (b.fav - a.fav) || (b.added - a.added) : (b.added - a.added));
+    const armyCards = af.map(a => {
+      const active = a.name === st.activePreset;
+      return {
+        name: a.name, thLabel: 'TH' + a.th, purpose: a.purpose, troops: a.troops || '—', spells: a.spells || '—', siege: a.siege || '—', notes: a.notes || '—', tags: a.tags || [], hasTags: (a.tags || []).length > 0, donations: !!a.donations,
+        fav: a.fav, isActive: active, activeLabel: active ? 'Active ✓' : 'Set active', activeCls: active ? 'is-disabled' : '',
+        onFav: () => this.toggleFav('army', a.id), onCopy: () => this.copyItem('army', a), onOpen: () => this.openLink(a.link),
+        onSetActive: () => this.setActive(a), onEdit: () => this.openModal('army', a), onDelete: () => this.askDelete('army', a.id, a.name)
+      };
+    });
+
+    const fields = ['name','th','category','purpose','link','tags','notes','troops','spells','siege'];
+    const setF = {}; fields.forEach(k => setF[k] = (e) => this.setField(k, e && e.target ? e.target.value : e));
+
+    const resColors = { idle: 'var(--txt3)', success: 'var(--green-l)', error: 'var(--red-l)' };
+
+    return {
+      tabs,
+      isSettings: st.activeTab === 'settings', isLog: st.activeTab === 'log', isManual: st.activeTab === 'manual', isBases: st.activeTab === 'bases', isArmies: st.activeTab === 'armies',
+      appStyle, accent,
+      running: st.running, notRunning: !st.running,
+      statusText: st.running ? 'Bot running' : 'Bot idle', statusColor: st.running ? '#3ee08f' : '#ff6b6b',
+      stepText: st.running ? 'Searching' : 'Idle', uptime: this.fmt(st.seconds), cycle: st.cycle, activePreset: st.activePreset,
+      s: st.s,
+      tog: { donations: () => this.toggle('donations'), logFile: () => this.toggle('logFile'), splash: () => this.toggle('splash'), debug: () => this.toggle('debug'), eventDump: () => this.toggle('eventDump'), randomEvents: () => this.toggle('randomEvents'), fatigue: () => this.toggle('fatigue') },
+      strategyOptions, sideOptions,
+      logFilters, filteredLogs, logsEmpty: filteredLogs.length === 0, logSearch: st.logSearch, setLogSearch: (e) => this.setState({ logSearch: e.target.value }),
+      debugShots, debugCount: debugShots.length,
+      copyLabel: st.copied ? 'Copied ✓' : 'Copy',
+      onClear: () => { this.setState({ logs: [] }); this.showToast('Log cleared', 'info'); },
+      onCopy: () => { const txt = st.logs.map(l => `[${l.time}] ${l.level}  ${l.msg}`).join('\n'); if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {}); this.setState({ copied: true }); clearTimeout(this._cp); this._cp = setTimeout(() => this.setState({ copied: false }), 1500); this.showToast('Log copied to clipboard'); },
+      // manual
+      detectLabel: st.busy.detect ? 'Detecting…' : 'Detect Loot', detectCls: 'btn btn--blue btn--block' + (st.busy.detect ? ' loading' : ''),
+      attackLabel: st.busy.attack ? 'Attacking…' : 'Attack Now', attackCls: 'btn btn--green btn--block' + (st.busy.attack ? ' loading' : ''),
+      onDetect: () => this.runDetect(),
+      onAttack: () => { if (confirmBeforeAttack) { this.setState({ confirm: { kind: 'attack', title: 'Deploy troops now?', msg: 'This deploys your trained army on the base currently shown in-game. It cannot be recalled.' } }); } else { this.runAttack(); } },
+      onReturnHome: () => { this.showToast('Returning to home village', 'info'); this.callApi('run_tool', 'return_home', { settings: this.settingsPayload() }); },
+      onOpenGame: () => { this.showToast('Launching game', 'info'); this.callApi('run_tool', 'open_game', { settings: this.settingsPayload() }); },
+      onSnap: () => { this.showToast('Taking screenshot', 'info'); this.callApi('run_tool', 'screenshot', { settings: this.settingsPayload() }); },
+      onReload: async () => { const res = await this.callApi('reload_config'); if (res && res.settings) this.applySettings(res.settings); this.showToast('Config reloaded', 'success'); },
+      resultText: st.result.text, resultColor: resColors[st.result.type], resultBar: st.result.type === 'success' ? 'var(--green)' : st.result.type === 'error' ? 'var(--red)' : 'var(--txt3)',
+      // header
+      onStart: () => { this.callApi('start_bot', this.settingsPayload()); this.showToast('Bot start requested', 'success'); },
+      onStop: () => { this.callApi('stop_bot'); this.showToast('Bot stop requested', 'error'); },
+      onUpdate: () => { this.callApi('check_update'); this.showToast('Checking for update', 'info'); },
+      // dirty
+      dirty: st.dirty, onDiscard: async () => { const res = await this.callApi('load_settings'); if (res && res.settings) this.applySettings(res.settings); this.setState({ dirty: false }); this.showToast('Changes discarded', 'info'); }, onSaveSettings: () => { this.callApi('save_settings', this.settingsPayload()); this.setState({ dirty: false }); this.showToast('Settings saved'); },
+      markDirty: () => { if (!this.state.dirty) this.setState({ dirty: true }); },
+      // libraries
+      thOptions,
+      baseSearch: st.baseSearch, setBaseSearch: (e) => this.setState({ baseSearch: e.target.value }),
+      baseTH: st.baseTH, setBaseTH: (e) => this.setState({ baseTH: e.target.value }),
+      baseCat: st.baseCat, setBaseCat: (e) => this.setState({ baseCat: e.target.value }),
+      baseSort: st.baseSort, setBaseSort: (e) => this.setState({ baseSort: e.target.value }),
+      baseCards, basesEmpty: baseCards.length === 0, basesShown: baseCards.length > 0,
+      onAddBase: () => this.openModal('base', null),
+      armySearch: st.armySearch, setArmySearch: (e) => this.setState({ armySearch: e.target.value }),
+      armyTH: st.armyTH, setArmyTH: (e) => this.setState({ armyTH: e.target.value }),
+      armyPurpose: st.armyPurpose, setArmyPurpose: (e) => this.setState({ armyPurpose: e.target.value }),
+      armySort: st.armySort, setArmySort: (e) => this.setState({ armySort: e.target.value }),
+      armyCards, armiesEmpty: armyCards.length === 0, armiesShown: armyCards.length > 0,
+      onAddArmy: () => this.openModal('army', null),
+      // toast
+      hasToast: !!st.toast, toastMsg: st.toast ? st.toast.msg : '', toastType: st.toast ? st.toast.type : 'success',
+      // confirm
+      hasConfirm: !!st.confirm, confirmTitle: st.confirm ? st.confirm.title : '', confirmMsg: st.confirm ? st.confirm.msg : '',
+      confirmIsAttack: !!(st.confirm && st.confirm.kind === 'attack'),
+      confirmIsDelete: !!(st.confirm && st.confirm.kind !== 'attack'),
+      confirmYesLabel: st.confirm && st.confirm.kind === 'attack' ? 'Deploy' : 'Delete',
+      confirmYesCls: st.confirm && st.confirm.kind === 'attack' ? 'btn btn--green' : 'btn btn--red',
+      confirmIcStyle: st.confirm && st.confirm.kind === 'attack' ? 'background:rgba(34,194,119,.14);border-color:rgba(34,194,119,.35);color:var(--green-l);' : 'background:rgba(239,71,87,.14);border-color:rgba(239,71,87,.3);color:var(--red-l);',
+      onConfirmNo: () => this.setState({ confirm: null }),
+      onConfirmYes: () => { const c = this.state.confirm; if (c && c.kind === 'attack') { this.setState({ confirm: null }); this.runAttack(); } else { this.doDelete(); } },
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+      // modal
+      hasModal: !!st.modal, isBaseModal: st.modal === 'base', isArmyModal: st.modal === 'army',
+      modalTitle: st.modal === 'base' ? (st.editId ? 'Edit Base' : 'Add Base') : (st.editId ? 'Edit Army' : 'Add Army'),
+      saveLabel: st.editId ? 'Save changes' : (st.modal === 'base' ? 'Save base' : 'Save army'),
+      f: st.form, setF, formError: st.formError, toggleFormDonations: () => this.toggleFormDonations(),
+      onCloseModal: () => this.closeModal(), onSaveItem: () => this.saveItem()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -8,10 +8,12 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 # Bundle the whole templates/ folder (images the bot matches against) at the
 # root of the unpacked exe, where vision.py and gui.py look for it via _MEIPASS.
 datas = [("templates", "templates")]
+datas += [("web_gui", "web_gui")]
 # customtkinter ships theme/asset files it loads at runtime.
 datas += collect_data_files("customtkinter")
 
 hiddenimports = collect_submodules("cocbot")
+hiddenimports += collect_submodules("webview")
 
 block_cipher = None
 

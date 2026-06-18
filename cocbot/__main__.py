@@ -1,4 +1,4 @@
-"""CLI entry: `python -m cocbot [test|attack|loop|bottom|homess|manual_attack [side]|detect_loot|loot_debug|--version]`.
+"""CLI entry: `python -m cocbot [test|screenshot|attack|loop|bottom|home|open_game|homess|manual_attack [side]|detect_loot|collect_resources|loot_debug|--version]`.
 
 The GUI spawns this as a subprocess with "loop", or with "manual_attack" /
 "detect_loot" for the Manual tab buttons. Typing a command manually is
@@ -44,12 +44,17 @@ def main():
         run_manual_attack,
         run_screenshot_test,
     )
+    from cocbot.actions import go_home, open_game
+
+    if command == "open_game":
+        open_game()
+        return
 
     if not check_connection():
         logger.error("ADB not connected. Start LDPlayer first.")
         sys.exit(1)
 
-    if command == "test":
+    if command in ("test", "screenshot"):
         run_screenshot_test()
     elif command == "attack":
         run_attack()
@@ -62,6 +67,15 @@ def main():
         run_manual_attack(side)
     elif command == "detect_loot":
         run_detect_loot()
+    elif command == "home":
+        ensure_coc_running()
+        if go_home():
+            logger.info("Returned to home village")
+        else:
+            logger.error("Could not return to home village")
+            sys.exit(1)
+    elif command == "collect_resources":
+        logger.warning("Collect resources: not implemented yet.")
     elif command == "homess":
         import cv2
 
@@ -73,8 +87,9 @@ def main():
         logger.error(f"Unknown command: {command}")
         logger.info(
             "Usage: python -m cocbot "
-            "[test|attack|loop|bottom|homess|"
-            "manual_attack [side]|detect_loot|loot_debug [file.png]|--version]"
+            "[test|screenshot|attack|loop|bottom|home|open_game|homess|"
+            "manual_attack [side]|detect_loot|collect_resources|"
+            "loot_debug [file.png]|--version]"
         )
         sys.exit(2)
 
