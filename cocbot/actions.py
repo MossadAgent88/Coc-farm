@@ -23,6 +23,7 @@ from cocbot.io import (
     force_restart_coc,
     launch_coc,
     press_back,
+    start_ldplayer_if_needed,
     swipe,
     tap,
     zoom_out,
@@ -385,6 +386,13 @@ def ensure_coc_running():
             dismiss_popups()
 
         logger.info("CoC is ready")
+
+
+def open_game():
+    """Start LDPlayer if needed, then open CoC and reach the village screen."""
+    start_ldplayer_if_needed()
+    ensure_coc_running()
+    logger.info("Game opened")
 
 
 # ── Clan / donations ──

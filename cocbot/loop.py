@@ -786,8 +786,11 @@ def run_screenshot_test():
     import cv2
 
     screen = capture_screenshot()
-    cv2.imwrite("screenshots/latest.png", screen)
-    logger.info(f"Saved screenshot: {screen.shape[1]}x{screen.shape[0]}")
+    path = Path("screenshots") / "latest.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(path), screen):
+        raise RuntimeError(f"Failed to save screenshot: {path}")
+    logger.info(f"Saved screenshot: {path} ({screen.shape[1]}x{screen.shape[0]})")
 
 
 def run_bottom_scout():
