@@ -1,0 +1,45 @@
+name: Apply Battle Wait Patch
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-battle-wait-patch.yml
+      - .github/scripts/apply_battle_wait_patch.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Apply patch
+        shell: pwsh
+        run: |
+          python .github/scripts/apply_battle_wait_patch.py
+
+      - name: Commit source changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cocbot/actions.py cocbot/config.py cocbot/vision.py cocbot/session.py test_battle_wait.py
+          $changed = git status --porcelain -- cocbot/actions.py cocbot/config.py cocbot/vision.py cocbot/session.py test_battle_wait.py
+          if (-not $changed) {
+            Write-Host "No source changes to commit"
+            exit 0
+          }
+          git commit -m "fix: add smart battle wait and 4x support"
+          git push origin HEAD:main
