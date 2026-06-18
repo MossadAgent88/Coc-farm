@@ -93,6 +93,7 @@ class BotController:
         self._stop_lock = threading.Lock()
         self._start_lock = threading.Lock()
         self._starting = False
+        self._cancel_start = False
         self.settings_path = Path.cwd() / "settings.json"
         self.bases = JsonLinkStore(Path.cwd() / "bases.json", "base")
         self.armies = JsonLinkStore(Path.cwd() / "armies.json", "army")
@@ -152,11 +153,13 @@ class BotController:
                 self.emit("log", text="Cannot start another action while the bot is running.", level="warning")
                 return
             self._starting = True
+            self._cancel_start = False
         if settings is not None:
             try:
                 self.save_settings(settings)
             except Exception as exc:
                 self._starting = False
+                self._cancel_start = False
                 self.emit("log", text=f"Could not save settings: {exc}", level="error")
                 return
         threading.Thread(
@@ -177,6 +180,11 @@ class BotController:
                 stderr=subprocess.STDOUT,
                 creationflags=flags,
             )
+            if self._cancel_start:
+                self._starting = False
+                self.emit("log", text=f"{label} start cancelled; stopping process.", level="warning")
+                threading.Thread(target=self._stop_worker, args=(self.process,), daemon=True).start()
+                return
             self.started_at = time.time()
             self._starting = False
             self.emit(
@@ -190,6 +198,7 @@ class BotController:
             self.process = None
             self.started_at = None
             self._starting = False
+            self._cancel_start = False
             self.emit("status", running=False, text="Bot idle")
             self.emit("log", text=f"Failed to start bot: {exc}", level="error")
 
@@ -239,10 +248,16 @@ class BotController:
 
     def stop(self) -> None:
         proc = self.process
+        if proc is None and self._starting:
+            self._cancel_start = True
+            self.emit("status", running=True, text="Stopping bot...")
+            self.emit("log", text="Stop requested while bot was starting.", level="warning")
+            return
         if proc is None or proc.poll() is not None:
             self.process = None
             self.started_at = None
             self._starting = False
+            self._cancel_start = False
             self.emit("status", running=False, text="Bot idle")
             return
         threading.Thread(target=self._stop_worker, args=(proc,), daemon=True).start()
@@ -273,6 +288,7 @@ class BotController:
                 self.process = None
                 self.started_at = None
                 self._starting = False
+                self._cancel_start = False
                 self.emit("status", running=False, text="Bot stopped")
 
     def check_update(self) -> None:
