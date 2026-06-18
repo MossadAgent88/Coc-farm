@@ -9,13 +9,17 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 
 if ($Build) {
-    if (!(Test-Path ".venv\Scripts\python.exe")) {
-        python -m venv .venv
+    $BuildVenv = ".venv-build"
+    $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
+
+    if (!(Test-Path $BuildPython)) {
+        python -m venv $BuildVenv
     }
-    .\.venv\Scripts\python.exe -m pip install --upgrade pip
-    .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-    .\.venv\Scripts\python.exe -m pip install pyinstaller
-    .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean CoCBot.spec
+    & $BuildPython -m pip install --upgrade pip setuptools wheel
+    & $BuildPython -m pip install -r requirements.txt
+    & $BuildPython -m pip install -r requirements-build.txt
+    & $BuildPython -c "import webview; import clr; print('webview/pythonnet import OK')"
+    & $BuildPython -m PyInstaller --noconfirm --clean CoCBot.spec
 }
 
 $BuiltDir = Join-Path $RepoRoot "dist\Coc-farm"
