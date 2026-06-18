@@ -1,0 +1,140 @@
+name: Publish v1.5.1 fixed package
+
+on:
+  push:
+    paths:
+      - .github/workflows/publish-v1-5-1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate source
+        shell: pwsh
+        run: |
+          python -m py_compile cocbot/army.py cocbot/event_broom.py cocbot/config.py cocbot/updater.py cocbot/actions.py cocbot/loop.py cocbot/__init__.py gui.py test_event_broom.py test_battle_wait.py
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build stable Windows package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onedir `
+            --windowed `
+            --name Coc-farm `
+            --add-data "templates;templates" `
+            --collect-all customtkinter `
+            --collect-all PIL `
+            --hidden-import customtkinter `
+            --hidden-import PIL.Image `
+            --hidden-import cv2 `
+            gui.py
+          if (!(Test-Path "dist/Coc-farm/Coc-farm.exe")) {
+            throw "Build failed: dist/Coc-farm/Coc-farm.exe was not created"
+          }
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Compress-Archive -Path "dist/Coc-farm/*" -DestinationPath "Coc-farm.zip" -Force
+          if (!(Test-Path "Coc-farm.zip")) {
+            throw "Release archive was not created: Coc-farm.zip"
+          }
+
+      - name: Publish v1.5.1 release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = '${{ github.repository }}'
+          $tag = 'v1.5.1'
+          $zip = 'Coc-farm.zip'
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = "application/vnd.github+json"
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $api = "https://api.github.com/repos/$repo"
+          $notes = @"
+          ## Windows Package
+
+          Download `Coc-farm.zip`, extract it, and run `Coc-farm.exe` inside the extracted `Coc-farm` folder.
+
+          Changes:
+          - Fast Broom Witch deployment timing.
+          - Grand Warden Tome reduced to about 3 seconds.
+          - Smart battle auto-end tracking.
+          - Final-minute 4x battle speed support when the HUD reads 1x.
+          - Stable folder package to avoid Python DLL / `_MEI` one-file crashes.
+          "@
+
+          $release = $null
+          try {
+            $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases/tags/$tag" -Method Get
+          } catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+          }
+
+          if ($null -eq $release) {
+            $body = @{
+              tag_name = $tag
+              target_commitish = '${{ github.sha }}'
+              name = $tag
+              body = $notes
+              draft = $false
+              prerelease = $false
+              make_latest = 'true'
+            } | ConvertTo-Json
+            $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases" -Method Post -Body $body -ContentType 'application/json'
+          } else {
+            $body = @{
+              name = $tag
+              body = $notes
+              draft = $false
+              prerelease = $false
+              make_latest = 'true'
+            } | ConvertTo-Json
+            $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases/$($release.id)" -Method Patch -Body $body -ContentType 'application/json'
+          }
+
+          foreach ($asset in @($release.assets)) {
+            if ($asset.name -eq $zip) {
+              Invoke-RestMethod -Headers $headers -Uri "$api/releases/assets/$($asset.id)" -Method Delete | Out-Null
+            }
+          }
+
+          $uploadUrl = $release.upload_url -replace '\{\?name,label\}', "?name=$zip"
+          for ($i = 1; $i -le 3; $i++) {
+            try {
+              Invoke-RestMethod -Headers $headers -Uri $uploadUrl -Method Post -InFile $zip -ContentType 'application/zip' | Out-Null
+              Write-Host "Uploaded $zip to $tag"
+              exit 0
+            } catch {
+              Write-Host "Upload attempt $i failed: $($_.Exception.Message)"
+              if ($i -eq 3) { throw }
+              Start-Sleep -Seconds 5
+            }
+          }
