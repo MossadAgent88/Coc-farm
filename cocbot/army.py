@@ -24,7 +24,7 @@ ARMY_PRESETS: dict[str, dict[str, Any]] = {
         "spells": [{"name": "spell_rage", "quantity": "fill_spells", "slot_source": "rage_slot_x"}],
         "heroes": [{"name": "warden", "slot_source": "warden_slot_x", "ability": "eternal_tome"}],
         "deployment_order": ["broom_witch", "warden", "rage", "eternal_tome"],
-        "timing": {"rage_after_wave": 1, "warden_after_wave": 0, "tome_after_seconds": 8.0},
+        "timing": {"rage_after_wave": 1, "warden_after_wave": 0, "tome_after_seconds": 3.0},
     },
     "electro_dragon": {
         "name": "electro_dragon",
@@ -89,10 +89,10 @@ def deploy_heroes(army_config: dict[str, Any], deploy_points: list[tuple[int, in
     warden_slot = int(getattr(cfg, "warden_slot_x", 1370))
     logger.info("Deploying Grand Warden for event push")
     emit("hero_deploy", hero="warden", slot_x=warden_slot)
-    tap(warden_slot, TROOP_BAR_Y, delay=0.08)
+    tap(warden_slot, TROOP_BAR_Y, delay=float(getattr(cfg, "broom_witch_hero_delay", 0.15)))
     for x, y in list(deploy_points)[:3]:
         check_deadline("Deploy Warden")
-        tap(x + random.randint(-15, 15), y + random.randint(-15, 15), delay=0.07)
+        tap(x + random.randint(-15, 15), y + random.randint(-15, 15), delay=float(getattr(cfg, "broom_witch_hero_delay", 0.15)))
 
 
 def deploy_rage_spells(army_config: dict[str, Any], rage_points: list[tuple[int, int]] | tuple[tuple[int, int], ...] = CORE_RAGE_POINTS) -> None:
@@ -101,25 +101,30 @@ def deploy_rage_spells(army_config: dict[str, Any], rage_points: list[tuple[int,
         return
     rage_slot = int(getattr(cfg, "rage_slot_x", 1290))
     count = max(1, int(getattr(cfg, "rage_spell_count", 3)))
-    logger.info(f"Dropping {count} Rage spells for Broom Witch core push")
+    logger.info("Dropping {} Rage spells for Broom Witch core push", count)
     emit("spell_deploy", spell="rage", slot_x=rage_slot, count=count)
-    tap(rage_slot, TROOP_BAR_Y, delay=0.08)
+    tap(rage_slot, TROOP_BAR_Y, delay=float(getattr(cfg, "broom_witch_spell_delay", 0.12)))
     points = list(rage_points)
     for i in range(count):
         check_deadline("Deploy Rage")
         x, y = points[i % len(points)]
-        tap(x + random.randint(-45, 45), y + random.randint(-45, 45), delay=0.08)
+        tap(x + random.randint(-45, 45), y + random.randint(-45, 45), delay=float(getattr(cfg, "broom_witch_spell_delay", 0.12)))
 
 
 def activate_warden_abilities(army_config: dict[str, Any], timing: str = "core") -> None:
     hero_names = {hero.get("name") for hero in army_config.get("heroes", [])}
     if "warden" not in hero_names:
         return
-    delay = max(0.0, float(getattr(cfg, "warden_tome_delay", 8.0)))
+    delay = max(0.0, float(getattr(cfg, "warden_tome_delay", army_config.get("timing", {}).get("tome_after_seconds", 3.0))))
     if delay:
-        logger.info(f"Waiting {delay:.1f}s before Eternal Tome ({timing})")
-        time.sleep(delay)
+        logger.info("Waiting {:.1f}s before Eternal Tome", delay)
+        remaining = delay
+        while remaining > 0:
+            check_deadline("Eternal Tome wait")
+            chunk = min(0.1, remaining)
+            time.sleep(chunk)
+            remaining -= chunk
     warden_slot = int(getattr(cfg, "warden_slot_x", 1370))
     logger.info("Activating Grand Warden Eternal Tome")
     emit("hero_ability", hero="warden", ability="eternal_tome", timing=timing)
-    tap(warden_slot, TROOP_BAR_Y, delay=0.08)
+    tap(warden_slot, TROOP_BAR_Y, delay=float(getattr(cfg, "broom_witch_hero_delay", 0.15)))
