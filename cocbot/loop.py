@@ -70,6 +70,7 @@ from cocbot.io import (
     zoom_out,
 )
 from cocbot.plans import PLANS_BY_KEY
+from cocbot.runtime import log_python_runtime
 from cocbot.session import BotStopRequested, DeadlineExceeded, deadline, emit, session
 from cocbot.vision import (
     _load_digit_templates,
@@ -107,6 +108,7 @@ for _old_log in Path(".").glob("cocbot.*.log"):
         pass
 
 logger.info(f"[INFO] CoC Bot v{__version__} starting...")
+log_python_runtime(logger)
 emit("version", version=__version__)
 
 

@@ -10,6 +10,7 @@ import sys
 from loguru import logger
 
 from cocbot import __version__
+from cocbot.runtime import ensure_python_runtime_compatible, log_python_runtime
 
 
 def main():
@@ -18,6 +19,13 @@ def main():
     if command in ("--version", "-V", "version"):
         print(f"[INFO] CoC Bot v{__version__} starting...")
         return
+
+    try:
+        ensure_python_runtime_compatible()
+    except RuntimeError as exc:
+        logger.error(str(exc))
+        sys.exit(1)
+    log_python_runtime(logger)
 
     if command == "loot_debug":
         # Accepts an optional screenshot path. If omitted, requires ADB for live capture.

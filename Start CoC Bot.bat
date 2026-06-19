@@ -5,7 +5,7 @@ REM  Double-click to launch the bot. The FIRST run installs
 REM  everything automatically (one time, ~1-2 min). After that
 REM  it just opens the app window with no console.
 REM ============================================================
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 REM --- First run: set up the virtual environment -------------
@@ -14,17 +14,22 @@ if not exist ".venv\Scripts\pythonw.exe" (
     echo  First-time setup -- installing the bot. This happens once.
     echo.
 
-    where python >nul 2>nul
-    if errorlevel 1 (
-        echo  [ERROR] Python is not installed or not on PATH.
-        echo          Install Python 3.11+ from https://www.python.org/downloads/
-        echo          and tick "Add Python to PATH" during install, then run this again.
+    set "PYTHON_CMD="
+    py -3.14 -c "import sys" >nul 2>nul
+    if not errorlevel 1 set "PYTHON_CMD=py -3.14"
+    if not defined PYTHON_CMD (
+        python -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 14) else 1)" >nul 2>nul
+        if not errorlevel 1 set "PYTHON_CMD=python"
+    )
+    if not defined PYTHON_CMD (
+        echo  [ERROR] Python 3.14 x64 is required for source runs.
+        echo          Python 3.15 is not supported yet.
         echo.
         pause
         exit /b 1
     )
 
-    python -m venv .venv
+    !PYTHON_CMD! -m venv .venv
     call ".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
     call ".venv\Scripts\python.exe" -m pip install -r requirements.txt
     if errorlevel 1 (

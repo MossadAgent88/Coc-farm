@@ -194,14 +194,24 @@ These steps are only for developers who want to build from source.
 
 Requirements:
 
-- Python 3.12 or compatible Python 3.x
+- Python 3.14 x64 for running from source and building the Windows EXE
+- Python 3.15 is experimental and currently blocked by PySide6 on Python 3.15.0b2. Keep using Python 3.14 x64 until PySide6 publishes compatible wheels.
 - Git
 - Windows
+
+Run from source with Python 3.14:
+
+```powershell
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe gui.py
+```
 
 Build:
 
 ```powershell
-py -3.12 -m venv .venv-build
+py -3.14 -m venv .venv-build
 .\.venv-build\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
 .\.venv-build\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv-build\Scripts\python.exe -m pip install -r requirements-build.txt

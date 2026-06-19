@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Install dependencies
         shell: pwsh
@@ -43,7 +43,7 @@ jobs:
       - name: Build Windows app and release ZIP
         shell: pwsh
         run: |
-          .\scripts\package_windows_release.ps1 -Build -Version "1.0.0" -OutputDir "release"
+          .\scripts\package_windows_release.ps1 -Build -Version "1.5.3" -OutputDir "release"
           if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
             throw "Missing release ZIP"
           }

@@ -10,10 +10,14 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-if not exist ".venv-build\Scripts\python.exe" py -3.12 -m venv .venv-build
-call ".venv-build\Scripts\python.exe" -c "import platform, struct, sys; assert sys.version_info[:2] == (3, 12), sys.version; assert struct.calcsize('P') * 8 == 64, platform.architecture(); print(sys.version)"
+if exist ".venv-build\Scripts\python.exe" (
+    call ".venv-build\Scripts\python.exe" -c "import struct, sys; raise SystemExit(0 if sys.version_info[:2] == (3, 14) and struct.calcsize('P') * 8 == 64 else 1)" >nul 2>nul
+    if errorlevel 1 rmdir /s /q ".venv-build"
+)
+if not exist ".venv-build\Scripts\python.exe" py -3.14 -m venv .venv-build
+call ".venv-build\Scripts\python.exe" -c "import platform, struct, sys; assert sys.version_info[:2] == (3, 14), sys.version; assert struct.calcsize('P') * 8 == 64, platform.architecture(); print(sys.version)"
 if errorlevel 1 (
-    echo [ERROR] Build requires Python 3.12 x64.
+    echo [ERROR] Build requires Python 3.14 x64.
     pause
     exit /b 1
 )
