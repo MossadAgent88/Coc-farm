@@ -9,6 +9,7 @@ __pycache__/
 # Virtual environments
 .venv/
 .venv-build/
+.venv315/
 venv/
 env/
 
@@ -28,6 +29,7 @@ screenshots/
 
 # Local release artifacts
 release/
+release-*/
 *.zip
 *.sha256
 

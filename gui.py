@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from bot_controller import BotController, app_version
+from cocbot.runtime import ensure_python_runtime_compatible, python_runtime_messages
 
 
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -23,6 +24,12 @@ WEB_DIR = BASE_DIR / "web_gui"
 
 def _run_bot_cli() -> None:
     """Run backend commands when the frozen GUI exe starts itself with --bot."""
+    try:
+        ensure_python_runtime_compatible()
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        sys.exit(1)
+
     args_after_flag = sys.argv[sys.argv.index("--bot") + 1 :]
     subcmd = args_after_flag[0] if args_after_flag else "loop"
 
@@ -293,6 +300,11 @@ def _start_server(api: WebApi) -> tuple[ThreadingHTTPServer, str]:
 
 def main() -> None:
     try:
+        ensure_python_runtime_compatible()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    try:
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QIcon
         from PySide6.QtWidgets import QApplication
@@ -307,6 +319,8 @@ def main() -> None:
         raise SystemExit(f"Missing HTML GUI folder: {WEB_DIR}")
 
     api = WebApi()
+    for level, message in python_runtime_messages():
+        api.controller.emit("log", text=message, level=level)
     _server, url = _start_server(api)
 
     app = QApplication(sys.argv)
