@@ -1,10 +1,16 @@
 """Fast Broom Witch event deployment helpers.
 
 The generic dump deploy is intentionally broad, but it is too slow for event
-farming. This module keeps Broom Witch attacks bounded and fast: deploy heroes
-first, dump Broom Witches along high-value perimeter lanes until depleted, drop
-Rage into the core path, then trigger Eternal Tome after a short configurable
-wait.
+farming. This module keeps Broom Witch attacks bounded and fast while also
+ensuring that **every** hero and **every** spell in the preset is used:
+
+  1. Deploy ALL heroes (Queen, Warden, Minion Prince, Duke) on their lanes.
+  2. Spam Broom Witches along the pressure edge with multiple taps per drop
+     point so the slot is depleted quickly and efficiently.
+  3. Drop ALL spells (Rage, Heal, Totem) on distinct lanes covering the core
+     push and funnels.
+  4. Activate ALL hero abilities (Queen's Royal Cloak, Warden's Eternal Tome,
+     Minion Prince's Dark Quill, Duke's ability) after a short delay.
 """
 
 from __future__ import annotations
@@ -16,10 +22,10 @@ from loguru import logger
 
 from cocbot.config import cfg
 from cocbot.army import (
-    activate_warden_abilities,
+    activate_all_hero_abilities,
     configured_broom_witch_slots,
+    deploy_all_spells,
     deploy_heroes,
-    deploy_rage_spells,
     get_army_config,
 )
 from cocbot.io import capture_screenshot, tap
@@ -125,6 +131,16 @@ def _taps_per_round() -> int:
     return max(1, int(getattr(cfg, "broom_witch_taps_per_round", 8)))
 
 
+def _taps_per_point() -> int:
+    """Number of rapid taps to perform at each deployment point.
+
+    Higher values deplete the troop slot faster (more Broom Witches dropped
+    per point per round). Capped so a single point is not hammered forever
+    if availability detection fails.
+    """
+    return max(1, min(6, int(getattr(cfg, "broom_witch_taps_per_point", 2))))
+
+
 def estimated_broom_witch_taps(waves: int | None = None) -> int:
     """Estimate tap volume for Broom Witch deployment.
 
@@ -134,45 +150,22 @@ def estimated_broom_witch_taps(waves: int | None = None) -> int:
     """
     round_count = max(1, int(waves if waves is not None else _max_rounds()))
     taps_per_round = min(_taps_per_round(), len(WIZARD_TOWER_PRESSURE_POINTS))
-    return round_count * len(_configured_slot_xs()) * (1 + taps_per_round)
+    taps_per_point = _taps_per_point()
+    return round_count * len(_configured_slot_xs()) * (1 + taps_per_round * taps_per_point)
 
 
-def deploy_broom_witches() -> None:
-    """Fast-deploy Broom Witches for Magical Crystal farming.
+def _spam_broom_witches(
+    slot_xs: list[int],
+    max_rounds: int,
+    taps_per_round: int,
+    taps_per_point: int,
+    tap_delay: float,
+    round_delay: float,
+) -> int:
+    """Spam Broom Witches along the pressure edge until depleted or capped.
 
-    Flow:
-      1. Deploy Grand Warden early.
-      2. Dump Broom Witches along the pressure edge until depleted or capped.
-      3. Drop Rage spells into the core path.
-      4. Activate Eternal Tome after the short configured delay.
+    Returns the number of completed rounds.
     """
-    army_config = get_army_config("broom_witch")
-    slot_xs = _broom_witch_slot_xs()
-    max_rounds = _max_rounds()
-    taps_per_round = _taps_per_round()
-    tap_delay = max(MIN_SAFE_TAP_DELAY, float(getattr(cfg, "broom_witch_tap_delay", 0.07)))
-    round_delay = max(0.0, float(getattr(cfg, "broom_witch_round_delay", getattr(cfg, "broom_witch_wave_pause", 0.25))))
-    hero_delay = max(0.0, float(getattr(cfg, "broom_witch_hero_delay", 0.15)))
-
-    logger.info(
-        "Broom Witch deploy: max_rounds={}, slot_xs={}, taps_per_round={}, est_taps={}",
-        max_rounds,
-        slot_xs,
-        taps_per_round,
-        estimated_broom_witch_taps(max_rounds),
-    )
-    emit(
-        "broom_witch_deploy_start",
-        max_rounds=max_rounds,
-        slot_xs=slot_xs,
-        taps_per_round=taps_per_round,
-        estimated_taps=estimated_broom_witch_taps(max_rounds),
-    )
-
-    deploy_heroes(army_config)
-    if hero_delay:
-        _sleep_interruptible(hero_delay, "Broom Witch hero deploy")
-
     logger.info("Deploying Broom Witches along event pressure edge until depleted...")
     rounds = 0
     while rounds < max_rounds:
@@ -182,12 +175,18 @@ def deploy_broom_witches() -> None:
         for slot_x in slot_xs:
             check_deadline("Broom Witch deploy")
             if not _slot_still_available(slot_x):
+                logger.debug("Broom Witch slot x={} depleted; stopping spam", slot_x)
                 continue
+            # Re-select the slot once per round to keep the troop active.
             tap(slot_x, TROOP_BAR_Y, delay=tap_delay)
             deployed_this_round = True
             for x, y in points:
+                check_deadline("Broom Witch deploy")
                 jx, jy = _jitter_point(x, y)
-                tap(jx, jy, delay=tap_delay)
+                # Multiple taps per point drop several Broom Witches quickly,
+                # which is what makes the spam "efficient and fast".
+                for _ in range(taps_per_point):
+                    tap(jx, jy, delay=tap_delay)
 
         if not deployed_this_round:
             break
@@ -197,9 +196,66 @@ def deploy_broom_witches() -> None:
             _sleep_interruptible(round_delay, "Broom Witch round delay")
 
     logger.info("Broom Witches depleted after {} rounds", rounds)
+    return rounds
 
-    deploy_rage_spells(army_config)
-    activate_warden_abilities(army_config, timing="core")
+
+def deploy_broom_witches() -> None:
+    """Fast-deploy Broom Witches for Magical Crystal farming.
+
+    Flow:
+      1. Deploy ALL heroes (Queen, Warden, Minion Prince, Duke).
+      2. Spam Broom Witches along the pressure edge until depleted or capped.
+      3. Drop ALL spells (Rage, Heal, Totem) across distinct lanes.
+      4. Activate ALL hero abilities after a short configurable delay.
+    """
+    army_config = get_army_config("broom_witch")
+    slot_xs = _broom_witch_slot_xs()
+    max_rounds = _max_rounds()
+    taps_per_round = _taps_per_round()
+    taps_per_point = _taps_per_point()
+    tap_delay = max(MIN_SAFE_TAP_DELAY, float(getattr(cfg, "broom_witch_tap_delay", 0.07)))
+    round_delay = max(0.0, float(getattr(cfg, "broom_witch_round_delay", getattr(cfg, "broom_witch_wave_pause", 0.25))))
+    hero_delay = max(0.0, float(getattr(cfg, "broom_witch_hero_delay", 0.15)))
+
+    logger.info(
+        "Broom Witch deploy: max_rounds={}, slot_xs={}, taps_per_round={}, taps_per_point={}, est_taps={}",
+        max_rounds,
+        slot_xs,
+        taps_per_round,
+        taps_per_point,
+        estimated_broom_witch_taps(max_rounds),
+    )
+    emit(
+        "broom_witch_deploy_start",
+        max_rounds=max_rounds,
+        slot_xs=slot_xs,
+        taps_per_round=taps_per_round,
+        taps_per_point=taps_per_point,
+        estimated_taps=estimated_broom_witch_taps(max_rounds),
+    )
+
+    # 1. Deploy every hero configured in the preset.
+    deploy_heroes(army_config)
+    if hero_delay:
+        _sleep_interruptible(hero_delay, "Broom Witch hero deploy")
+
+    # 2. Spam Broom Witches fast along the pressure edge.
+    rounds = _spam_broom_witches(
+        slot_xs=slot_xs,
+        max_rounds=max_rounds,
+        taps_per_round=taps_per_round,
+        taps_per_point=taps_per_point,
+        tap_delay=tap_delay,
+        round_delay=round_delay,
+    )
+
+    # 3. Drop every spell (Rage, Heal, Totem) on distinct lanes so the entire
+    #    spell inventory is consumed and contributes to the push.
+    deploy_all_spells(army_config)
+
+    # 4. Activate every hero ability (Queen, Warden Eternal Tome, Minion Prince,
+    #    Duke) so no hero is left without using its ability.
+    activate_all_hero_abilities(army_config)
 
     logger.info("Fast Broom Witch deploy complete")
     emit(

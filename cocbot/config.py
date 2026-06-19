@@ -51,17 +51,30 @@ class BotConfig:
     broom_witch_slot_xs: str = "250"
     broom_witch_slot_x: int = 250  # legacy fallback if slot_xs is empty
     broom_witch_waves: int = 3  # legacy alias; use broom_witch_max_rounds for new code
-    broom_witch_max_rounds: int = 3
-    broom_witch_taps_per_round: int = 8
+    broom_witch_max_rounds: int = 6
+    broom_witch_taps_per_round: int = 13
+    broom_witch_taps_per_point: int = 2
     broom_witch_tap_delay: float = 0.07
     broom_witch_round_delay: float = 0.25
     broom_witch_wave_pause: float = 0.25  # legacy alias
     broom_witch_hero_delay: float = 0.15
     broom_witch_spell_delay: float = 0.12
     broom_witch_battle_seconds: float = 45.0
+    # Hero troop-bar slot X positions (1920x1080). Used so every hero is
+    # selected from the correct slot and deployed on its own lane.
+    queen_slot_x: int = 1300
     warden_slot_x: int = 1370
+    king_slot_x: int = 1430
+    minion_prince_slot_x: int = 1490
+    duke_slot_x: int = 1550
+    # Spell troop-bar slot X positions and counts. Each spell type uses its
+    # own drop-point lane in army.deploy_all_spells().
     rage_slot_x: int = 1290
-    rage_spell_count: int = 3
+    heal_slot_x: int = 1230
+    totem_slot_x: int = 1350
+    rage_spell_count: int = 4
+    heal_spell_count: int = 2
+    totem_spell_count: int = 2
     warden_tome_delay: float = 3.0
     auto_end_enabled: bool = True
     auto_end_min_battle_age: float = 20.0
