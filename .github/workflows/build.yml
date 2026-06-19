@@ -40,24 +40,7 @@ jobs:
         run: |
           python -m py_compile gui.py bot_controller.py cocbot\io.py cocbot\actions.py cocbot\__main__.py cocbot\loop.py
 
-      - name: Build Windows app and release ZIP
-        shell: pwsh
-        run: |
-          $version = "${{ github.ref_name }}"
-          if ("${{ github.ref_type }}" -ne "tag") {
-            $version = "${{ inputs.tag }}"
-          }
-          if (-not $version) { $version = "v1.5.5" }
-          $version = $version.TrimStart("v")
-          .\scripts\package_windows_release.ps1 -Build -Version "$version" -OutputDir "release"
-          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
-            throw "Missing release ZIP"
-          }
-          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip.sha256")) {
-            throw "Missing checksum"
-          }
-
-      - name: Resolve release tag
+      - name: Resolve release tag and version
         id: release_tag
         shell: pwsh
         run: |
@@ -69,14 +52,28 @@ jobs:
             $tag = "v1.5.5"
           }
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
+          $version = $tag.TrimStart("v")
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build Windows app and release ZIP
+        shell: pwsh
+        run: |
+          .\scripts\package_windows_release.ps1 -Build -Version "${{ steps.release_tag.outputs.version }}" -OutputDir "release"
+          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
+            throw "Missing release ZIP"
+          }
+          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip.sha256")) {
+            throw "Missing checksum"
+          }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: CoC Farm Bot ${{ steps.release_tag.outputs.tag }} - Windows EXE Release
+          name: CoC Farm Bot v${{ steps.release_tag.outputs.version }}
           body_path: release_assets/RELEASE_NOTES_${{ steps.release_tag.outputs.tag }}.md
+          make_latest: true
           files: |
             release/CoC-Farm-Bot-Windows.zip
             release/CoC-Farm-Bot-Windows.zip.sha256

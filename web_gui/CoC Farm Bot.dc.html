@@ -37,16 +37,6 @@
       background:radial-gradient(130% 90% at 85% -15%,#161d2c 0%,#0a0d12 48%,#070809 100%);
       font-family:var(--sans);color:var(--txt);font-size:13px;}
 
-    /* Titlebar */
-    .titlebar{flex:none;height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(7,8,9,.55);border-bottom:1px solid var(--line2);}
-    .tb-left{display:flex;align-items:center;gap:8px;}
-    .tb-logo{width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,#6d5cff,#3d7bff);box-shadow:0 0 8px rgba(109,92,255,.55);}
-    .tb-title{font-size:11.5px;font-weight:600;color:var(--txt3);}
-    .tb-ctrls{display:flex;gap:3px;}
-    .tb-btn{width:28px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--txt3);cursor:pointer;font-size:13px;}
-    .tb-btn:hover{background:rgba(255,255,255,.07);}
-    .tb-btn.close:hover{background:var(--red);color:#fff;}
-
     /* Header */
     .hdr{flex:none;display:flex;align-items:center;gap:14px;padding:9px 16px;background:rgba(11,14,20,.5);border-bottom:1px solid var(--line);}
     .brand{display:flex;align-items:center;gap:11px;flex:none;}
@@ -248,17 +238,7 @@
 
 <div class="app" style="{{ appStyle }}">
 
-  <!-- Titlebar -->
-  <div class="titlebar">
-    <div class="tb-left"><div class="tb-logo"></div><span class="tb-title">Clash of Clans Farm Bot — v1.5.0</span></div>
-    <div class="tb-ctrls">
-      <div class="tb-btn">‒</div>
-      <div class="tb-btn">▢</div>
-      <div class="tb-btn close">✕</div>
-    </div>
-  </div>
-
-  <!-- Header -->
+  <!-- Header (native window titlebar handles Close/Min/Max) -->
   <header class="hdr">
     <div class="brand">
       <div class="avatar">CB</div>
