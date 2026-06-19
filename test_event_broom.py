@@ -71,7 +71,9 @@ def test_deploy_uses_fast_until_depleted_pattern(monkeypatch):
     monkeypatch.setattr(event_broom, "_jitter_point", lambda x, y: (x, y))
     monkeypatch.setattr(event_broom, "_broom_witch_slot_xs", lambda: [250])
     monkeypatch.setattr(event_broom, "_slot_still_available", lambda _slot_x: True)
+    # Broom Witch spam now uses batched taps (single ADB call per round).
     monkeypatch.setattr(event_broom, "tap", lambda x, y, delay=0: taps.append((x, y, delay)))
+    monkeypatch.setattr(event_broom, "batch_tap", lambda taps_list: taps.extend(taps_list))
     monkeypatch.setattr(event_broom.time, "sleep", lambda seconds: sleeps.append(seconds))
     monkeypatch.setattr(event_broom, "check_deadline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(event_broom, "emit", lambda *args, **kwargs: events.append((args, kwargs)))
@@ -108,7 +110,9 @@ def test_deploy_spams_multiple_taps_per_point(monkeypatch):
     monkeypatch.setattr(event_broom, "_jitter_point", lambda x, y: (x, y))
     monkeypatch.setattr(event_broom, "_broom_witch_slot_xs", lambda: [250])
     monkeypatch.setattr(event_broom, "_slot_still_available", lambda _slot_x: True)
+    # Broom Witch spam now uses batched taps (single ADB call per round).
     monkeypatch.setattr(event_broom, "tap", lambda x, y, delay=0: taps.append((x, y, delay)))
+    monkeypatch.setattr(event_broom, "batch_tap", lambda taps_list: taps.extend(taps_list))
     monkeypatch.setattr(event_broom.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(event_broom, "check_deadline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(event_broom, "emit", lambda *args, **kwargs: None)
@@ -146,7 +150,9 @@ def test_activate_all_hero_abilities_triggers_every_hero(monkeypatch):
 
     monkeypatch.setattr(army.cfg, "warden_tome_delay", 0.0)
     monkeypatch.setattr(army.cfg, "broom_witch_hero_delay", 0.0)
+    # Non-Warden abilities use batched taps; Warden still uses tap.
     monkeypatch.setattr(army, "tap", lambda x, y, delay=0: activated.append(x))
+    monkeypatch.setattr(army, "batch_tap", lambda taps_list: activated.extend(t[0] for t in taps_list))
     monkeypatch.setattr(army.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(army, "check_deadline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(army, "emit", lambda *_args, **_kwargs: None)
@@ -174,7 +180,9 @@ def test_deploy_all_spells_drops_every_spell_type(monkeypatch):
     monkeypatch.setattr(army_mod.cfg, "rage_spell_count", 2)
     monkeypatch.setattr(army_mod.cfg, "heal_spell_count", 2)
     monkeypatch.setattr(army_mod.cfg, "totem_spell_count", 2)
+    # Spells now use batched taps (slot-select + all drops in one ADB call).
     monkeypatch.setattr(army_mod, "tap", lambda x, y, delay=0: dropped.append((x, y)))
+    monkeypatch.setattr(army_mod, "batch_tap", lambda taps_list: dropped.extend((t[0], t[1]) for t in taps_list))
     monkeypatch.setattr(army_mod, "check_deadline", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(army_mod, "emit", lambda *_args, **_kwargs: None)
 

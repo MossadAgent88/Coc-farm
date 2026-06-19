@@ -20,7 +20,7 @@ from typing import Any
 from loguru import logger
 
 from cocbot.config import cfg
-from cocbot.io import tap
+from cocbot.io import batch_tap, tap
 from cocbot.plans import TROOP_BAR_Y
 from cocbot.session import check_deadline, emit
 
@@ -255,11 +255,14 @@ def _deploy_single_hero(hero: dict[str, Any], delay: float) -> None:
     entry_points = _hero_entry_points(hero_name)
     logger.info("Deploying hero {} at slot x={}", hero_name, slot_x)
     emit("hero_deploy", hero=hero_name, slot_x=slot_x)
-    tap(slot_x, TROOP_BAR_Y, delay=delay)
+    # Select the hero slot then tap its entry points — chained into a single
+    # ADB call via batch_tap so the hero drops quickly.
+    hero_taps: list[tuple[int, int, float]] = [(slot_x, TROOP_BAR_Y, delay)]
     for x, y in list(entry_points)[:3]:
         check_deadline(f"Deploy {hero_name}")
         jx, jy = _jitter(x, y)
-        tap(jx, jy, delay=delay)
+        hero_taps.append((jx, jy, delay))
+    batch_tap(hero_taps)
 
 
 def deploy_heroes(
@@ -297,11 +300,16 @@ def activate_hero_ability(hero_name: str, timing: str = "core") -> None:
     tap(slot_x, TROOP_BAR_Y, delay=delay)
 
 
-def activate_warden_abilities(army_config: dict[str, Any], timing: str = "core") -> None:
+def activate_warden_abilities(
+    army_config: dict[str, Any], timing: str = "core", skip_delay: bool = False
+) -> None:
     """Backward-compatible Warden ability activator.
 
     Newer callers should use `activate_all_hero_abilities()` to trigger
-    every hero's ability.
+    every hero's ability. When called from that function, pass
+    ``skip_delay=True`` to avoid double-counting the shared
+    ``hero_ability_delay`` (otherwise the Tome would fire at
+    ``ability_delay + tome_delay`` instead of just ``tome_delay``).
     """
     hero_names = {hero.get("name") for hero in army_config.get("heroes", [])}
     if "warden" not in hero_names:
@@ -316,14 +324,20 @@ def activate_warden_abilities(army_config: dict[str, Any], timing: str = "core")
             )
         ),
     )
-    if delay:
+    if delay and not skip_delay:
         logger.info("Waiting {:.1f}s before Eternal Tome", delay)
         _interruptible_sleep(delay, "Eternal Tome wait")
     activate_hero_ability("warden", timing="eternal_tome")
 
 
 def activate_all_hero_abilities(army_config: dict[str, Any]) -> None:
-    """Activate abilities for every hero that has one configured."""
+    """Activate abilities for every hero that has one configured.
+
+    Non-Warden abilities are batched into a single ADB call. The Warden's
+    Eternal Tome is activated separately with its own configurable delay,
+    and ``skip_delay=True`` prevents double-counting ``hero_ability_delay``
+    (the bug that previously pushed the Tome to fire at 2.5s + 3.0s = 5.5s).
+    """
     heroes = army_config.get("heroes", [])
     if not heroes:
         return
@@ -332,17 +346,30 @@ def activate_all_hero_abilities(army_config: dict[str, Any]) -> None:
     if ability_delay:
         _interruptible_sleep(ability_delay, "Hero ability wait")
 
+    hero_delay = _tap_delay("broom_witch_hero_delay", 0.15)
+    ability_taps: list[tuple[int, int, float]] = []
+    warden_present = False
     for hero in heroes:
         hero_name = hero.get("name")
         ability = hero.get("ability")
         if not hero_name or not ability:
             continue
         check_deadline(f"Activate {hero_name} ability")
-        # The Warden uses the configurable tome delay via the legacy function.
         if hero_name == "warden":
-            activate_warden_abilities(army_config, timing="eternal_tome")
+            warden_present = True
             continue
-        activate_hero_ability(hero_name, timing=ability)
+        slot_x = _hero_slot_x(hero_name)
+        emit("hero_ability", hero=hero_name, ability=ability, slot_x=slot_x)
+        ability_taps.append((slot_x, TROOP_BAR_Y, hero_delay))
+
+    if ability_taps:
+        logger.info("Batch-activating {} non-Warden abilities", len(ability_taps))
+        batch_tap(ability_taps)
+
+    # The Warden uses the configurable tome delay via the legacy function.
+    # skip_delay=True so hero_ability_delay is not double-counted.
+    if warden_present:
+        activate_warden_abilities(army_config, timing="eternal_tome", skip_delay=True)
 
 
 # ── Spell deployment ──
@@ -353,12 +380,15 @@ def _drop_spell(spell_name: str, count: int, drop_points: tuple[tuple[int, int],
     delay = _tap_delay("broom_witch_spell_delay", 0.12)
     logger.info("Dropping {} x{} ({})", spell_name, count, spell_name.replace("spell_", ""))
     emit("spell_deploy", spell=spell_name, slot_x=slot_x, count=count)
-    tap(slot_x, TROOP_BAR_Y, delay=delay)
+    # Select the spell slot then drop all charges — chained into a single
+    # ADB call via batch_tap so all spells land in one fast burst.
+    spell_taps: list[tuple[int, int, float]] = [(slot_x, TROOP_BAR_Y, delay)]
     for i in range(count):
         check_deadline(f"Deploy {spell_name}")
         x, y = drop_points[i % len(drop_points)]
         jx, jy = _jitter(x, y, radius=45)
-        tap(jx, jy, delay=delay)
+        spell_taps.append((jx, jy, delay))
+    batch_tap(spell_taps)
 
 
 def deploy_rage_spells(

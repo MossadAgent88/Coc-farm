@@ -28,7 +28,7 @@ from cocbot.army import (
     deploy_heroes,
     get_army_config,
 )
-from cocbot.io import capture_screenshot, tap
+from cocbot.io import batch_tap, capture_screenshot, tap
 from cocbot.plans import TROOP_BAR_Y
 from cocbot.session import check_deadline, emit
 from cocbot.vision import find_troop_slots, is_troop_available
@@ -164,6 +164,11 @@ def _spam_broom_witches(
 ) -> int:
     """Spam Broom Witches along the pressure edge until depleted or capped.
 
+    Uses :func:`batch_tap` so an entire round (slot re-select + all drop
+    points) runs in a **single** ADB shell call instead of one subprocess
+    spawn per tap. This is what makes the spam fast enough to empty the slot
+    inside the event crystal window.
+
     Returns the number of completed rounds.
     """
     logger.info("Deploying Broom Witches along event pressure edge until depleted...")
@@ -171,27 +176,30 @@ def _spam_broom_witches(
     while rounds < max_rounds:
         check_deadline("Broom Witch deploy")
         points = broom_witch_wave_points(rounds)[:taps_per_round]
-        deployed_this_round = False
-        for slot_x in slot_xs:
-            check_deadline("Broom Witch deploy")
-            if not _slot_still_available(slot_x):
-                logger.debug("Broom Witch slot x={} depleted; stopping spam", slot_x)
-                continue
-            # Re-select the slot once per round to keep the troop active.
-            tap(slot_x, TROOP_BAR_Y, delay=tap_delay)
-            deployed_this_round = True
-            for x, y in points:
-                check_deadline("Broom Witch deploy")
-                jx, jy = _jitter_point(x, y)
-                # Multiple taps per point drop several Broom Witches quickly,
-                # which is what makes the spam "efficient and fast".
-                for _ in range(taps_per_point):
-                    tap(jx, jy, delay=tap_delay)
 
-        if not deployed_this_round:
+        # Verify at least one slot still has troops before issuing the round.
+        active_slots = [sx for sx in slot_xs if _slot_still_available(sx)]
+        if not active_slots:
+            logger.info("All Broom Witch slots depleted; stopping spam")
             break
 
+        # Build the entire round as a list of (x, y, delay) tuples, then
+        # execute it via a single batched ADB call. This converts ~50-150
+        # subprocess spawns per round into 1-3.
+        round_taps: list[tuple[int, int, float]] = []
+        for slot_x in active_slots:
+            # Re-select the slot once per round to keep the troop active,
+            # then tap every pressure point taps_per_point times.
+            round_taps.append((slot_x, TROOP_BAR_Y, tap_delay))
+            for x, y in points:
+                jx, jy = _jitter_point(x, y)
+                for _ in range(taps_per_point):
+                    round_taps.append((jx, jy, tap_delay))
+
+        check_deadline("Broom Witch deploy")
+        batch_tap(round_taps)
         rounds += 1
+
         if rounds < max_rounds:
             _sleep_interruptible(round_delay, "Broom Witch round delay")
 
