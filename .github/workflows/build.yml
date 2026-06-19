@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v1.0.0"
+        description: "Release tag, for example v1.5.5"
         required: false
-        default: "v1.0.0"
+        default: "v1.5.5"
 
 permissions:
   contents: write
@@ -43,7 +43,13 @@ jobs:
       - name: Build Windows app and release ZIP
         shell: pwsh
         run: |
-          .\scripts\package_windows_release.ps1 -Build -Version "1.5.3" -OutputDir "release"
+          $version = "${{ github.ref_name }}"
+          if ("${{ github.ref_type }}" -ne "tag") {
+            $version = "${{ inputs.tag }}"
+          }
+          if (-not $version) { $version = "v1.5.5" }
+          $version = $version.TrimStart("v")
+          .\scripts\package_windows_release.ps1 -Build -Version "$version" -OutputDir "release"
           if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
             throw "Missing release ZIP"
           }
@@ -60,7 +66,7 @@ jobs:
           } elseif ("${{ inputs.tag }}") {
             $tag = "${{ inputs.tag }}"
           } else {
-            $tag = "v1.0.0"
+            $tag = "v1.5.5"
           }
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -69,8 +75,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: CoC Farm Bot v1.0.0 - Windows EXE Release
-          body_path: release_assets/RELEASE_NOTES_v1.0.0.md
+          name: CoC Farm Bot ${{ steps.release_tag.outputs.tag }} - Windows EXE Release
+          body_path: release_assets/RELEASE_NOTES_${{ steps.release_tag.outputs.tag }}.md
           files: |
             release/CoC-Farm-Bot-Windows.zip
             release/CoC-Farm-Bot-Windows.zip.sha256

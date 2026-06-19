@@ -1,6 +1,6 @@
 param(
     [switch]$Build,
-    [string]$Version = "1.5.3",
+    [string]$Version = "1.5.5",
     [string]$OutputDir = "release"
 )
 
@@ -90,7 +90,13 @@ Copy-Item -LiteralPath $BuiltExe -Destination (Join-Path $Stage "CoC Farm Bot.ex
 Copy-Item -LiteralPath (Join-Path $RepoRoot "release_assets\QUICK_START.txt") -Destination (Join-Path $Stage "QUICK_START.txt") -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "release_assets\settings.example.json") -Destination (Join-Path $Stage "settings.example.json") -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "release_assets\CHANGELOG.txt") -Destination (Join-Path $Stage "CHANGELOG.txt") -Force
-Copy-Item -LiteralPath (Join-Path $RepoRoot "release_assets\RELEASE_NOTES_v1.0.0.md") -Destination (Join-Path $Stage "RELEASE_NOTES_v1.0.0.md") -Force
+$ReleaseNotesName = "RELEASE_NOTES_v$Version.md"
+$ReleaseNotesPath = Join-Path $RepoRoot "release_assets\$ReleaseNotesName"
+if (!(Test-Path $ReleaseNotesPath)) {
+    $ReleaseNotesName = "RELEASE_NOTES_v1.0.0.md"
+    $ReleaseNotesPath = Join-Path $RepoRoot "release_assets\$ReleaseNotesName"
+}
+Copy-Item -LiteralPath $ReleaseNotesPath -Destination (Join-Path $Stage $ReleaseNotesName) -Force
 
 if (Test-Path $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $ZipPath -Force

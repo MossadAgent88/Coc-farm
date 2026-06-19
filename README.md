@@ -243,8 +243,8 @@ For maintainers:
 Manual tag command:
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.5.5
+git push origin v1.5.5
 ```
 
 ## Disclaimer
