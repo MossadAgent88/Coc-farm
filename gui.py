@@ -90,6 +90,7 @@ class WebApi:
             "settings": self.controller.load_settings(),
             "bases": self.controller.bases.load(),
             "armies": self.controller.armies.load(),
+            "presets": self.army_presets(),
         }
 
     def drain_events(self) -> list[dict[str, Any]]:
@@ -159,6 +160,18 @@ class WebApi:
         self.controller.copy_link(link)
         return {"ok": True}
 
+    def copy_text(self, text: str) -> dict[str, Any]:
+        result = self.controller.copy_text(text)
+        return {"ok": bool(result.get("ok")), "error": result.get("error", "")}
+
+    def list_debug_screenshots(self) -> dict[str, Any]:
+        return {"ok": True, "shots": self.controller.list_debug_screenshots()}
+
+    def army_presets(self) -> list[dict[str, Any]]:
+        from cocbot.army_catalog import build_gui_catalog
+
+        return build_gui_catalog()
+
 
 BRIDGE_METHODS = (
     "initial_state",
@@ -174,6 +187,9 @@ BRIDGE_METHODS = (
     "save_library",
     "open_link",
     "copy_link",
+    "copy_text",
+    "list_debug_screenshots",
+    "army_presets",
 )
 
 
@@ -214,7 +230,11 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if unquote(parsed.path).endswith(".html"):
+        path = unquote(parsed.path)
+        if path.startswith("/__shots__/"):
+            self._send_screenshot(path.removeprefix("/__shots__/"))
+            return
+        if path.endswith(".html"):
             self._send_html_with_bridge(parsed.path)
             return
         super().do_GET()
@@ -267,6 +287,26 @@ class QuietHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_screenshot(self, token: str) -> None:
+        api = self.api
+        path = api.controller.shot_path(token) if api else None
+        if path is None:
+            self.send_error(404)
+            return
+        try:
+            data = path.read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        ext = path.suffix.lower()
+        ctype = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(data)
 

@@ -9,6 +9,8 @@ import json
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from cocbot.army_catalog import DEFAULT_PRESET, normalize_preset
+
 _SETTINGS_FILE = Path.cwd() / "settings.json"
 
 
@@ -44,7 +46,7 @@ class BotConfig:
     max_cycles: int = 0
     debug_screenshots: bool = False
     dump_mode: bool = False
-    army_preset: str = "broom_witch"
+    army_preset: str = DEFAULT_PRESET
     # Broom Witch event mode tuning. These defaults are intentionally bounded:
     # one troop-bar slot, fast rounds, and no rapid-fire tapping.
     # Use a comma-separated list because settings.json stores GUI values as text.
@@ -107,6 +109,18 @@ def load_config(path: Path = _SETTINGS_FILE) -> BotConfig:
                 kwargs[f.name] = float(val)
             else:
                 kwargs[f.name] = str(val)
+    # Migrate/validate the army preset so an old or invalid value in
+    # settings.json (e.g. a removed preset) falls back cleanly instead of
+    # silently breaking deployment.
+    requested = kwargs.get("army_preset", DEFAULT_PRESET)
+    preset, changed = normalize_preset(requested)
+    if changed:
+        from loguru import logger
+
+        logger.warning(
+            f"Unsupported army_preset {requested!r}; using {preset!r} instead"
+        )
+    kwargs["army_preset"] = preset
     return BotConfig(**kwargs)
 
 

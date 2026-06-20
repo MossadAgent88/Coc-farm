@@ -8,6 +8,7 @@ cocbot`` or the frozen app's ``--bot`` entrypoint.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import queue
@@ -25,6 +26,10 @@ from cocbot import __version__
 
 EVENT_PREFIX = "__EVENT__ "
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+# Folders the backend may write debug/screenshot PNGs into, relative to a
+# data root (current working dir and the app dir). Order = display priority.
+SCREENSHOT_SUBDIRS = ("debug/runtime", "debug", "debug_screenshots", "screenshots")
 
 
 class JsonLinkStore:
@@ -97,6 +102,8 @@ class BotController:
         self.settings_path = Path.cwd() / "settings.json"
         self.bases = JsonLinkStore(Path.cwd() / "bases.json", "base")
         self.armies = JsonLinkStore(Path.cwd() / "armies.json", "army")
+        self._shot_index: dict[str, Path] = {}
+        self._shot_lock = threading.Lock()
 
     @property
     def is_running(self) -> bool:
@@ -332,6 +339,118 @@ class BotController:
 
     def copy_link(self, link: str) -> None:
         self.emit("copy_link", link=link.strip())
+
+    # ── Clipboard ───────────────────────────────────────────────────────────
+    def copy_text(self, text: str) -> dict[str, Any]:
+        """Copy *text* to the OS clipboard. Returns {"ok": bool, "error": str}.
+
+        Tries pyperclip first (if installed), then a platform-native command.
+        Never fakes success — the GUI relies on the real result.
+        """
+        text = "" if text is None else str(text)
+        try:
+            import pyperclip  # optional dependency
+
+            pyperclip.copy(text)
+            return {"ok": True}
+        except Exception:
+            pass
+
+        try:
+            if os.name == "nt":
+                flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+                subprocess.run(
+                    ["clip"], input=text.encode("utf-16-le"), check=True, creationflags=flags
+                )
+            elif sys.platform == "darwin":
+                subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
+            else:
+                try:
+                    subprocess.run(
+                        ["xclip", "-selection", "clipboard"],
+                        input=text.encode("utf-8"),
+                        check=True,
+                    )
+                except FileNotFoundError:
+                    subprocess.run(["xsel", "--clipboard", "--input"], input=text.encode("utf-8"), check=True)
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    # ── Debug screenshots ───────────────────────────────────────────────────
+    def _screenshot_roots(self) -> list[Path]:
+        roots: list[Path] = []
+        seen: set[str] = set()
+        for base in (Path.cwd(), self.base_dir):
+            for sub in SCREENSHOT_SUBDIRS:
+                d = (base / sub).resolve()
+                key = str(d)
+                if key not in seen:
+                    seen.add(key)
+                    roots.append(d)
+        return roots
+
+    def list_debug_screenshots(self, limit: int = 48) -> list[dict[str, Any]]:
+        """Return real debug/screenshot PNGs, newest first.
+
+        Each item: {name, mtime, time, url}. ``url`` is served by the GUI HTTP
+        server via ``/__shots__/<token>`` so large images are not base64-inlined.
+        Works in both source and frozen (PyInstaller) modes because all paths
+        are derived from the running process, never hard-coded.
+        """
+        found: list[tuple[float, Path]] = []
+        seen: set[str] = set()
+        for d in self._screenshot_roots():
+            if not d.is_dir():
+                continue
+            for pattern in ("*.png", "*.jpg", "*.jpeg"):
+                for path in d.glob(pattern):
+                    rp = path.resolve()
+                    key = str(rp)
+                    if key in seen:
+                        continue
+                    try:
+                        mtime = path.stat().st_mtime
+                    except OSError:
+                        continue
+                    seen.add(key)
+                    found.append((mtime, rp))
+        found.sort(key=lambda t: t[0], reverse=True)
+        found = found[: max(0, int(limit))]
+
+        index: dict[str, Path] = {}
+        out: list[dict[str, Any]] = []
+        for mtime, rp in found:
+            token = hashlib.sha1(str(rp).encode("utf-8")).hexdigest()[:16]
+            index[token] = rp
+            out.append(
+                {
+                    "name": rp.name,
+                    "mtime": mtime,
+                    "time": time.strftime("%H:%M:%S", time.localtime(mtime)),
+                    "url": f"/__shots__/{token}",
+                }
+            )
+        with self._shot_lock:
+            self._shot_index = index
+        return out
+
+    def shot_path(self, token: str) -> Path | None:
+        """Resolve a screenshot token to a safe absolute path, or None."""
+        with self._shot_lock:
+            path = self._shot_index.get(str(token))
+        if path is None:
+            return None
+        try:
+            rp = path.resolve()
+        except OSError:
+            return None
+        roots = self._screenshot_roots()
+        if not any(rp == r or r in rp.parents for r in roots):
+            return None
+        if not rp.is_file():
+            return None
+        return rp
 
 
 def app_version() -> str:

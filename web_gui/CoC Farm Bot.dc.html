@@ -135,6 +135,21 @@
 
     /* chips / badges */
     .chip{font-size:10.5px;font-weight:600;color:var(--txt2);background:rgba(255,255,255,.06);border:1px solid var(--line2);padding:2px 8px;border-radius:6px;white-space:nowrap;}
+    /* army equipment panel */
+    .eqcard{background:var(--card2);border:1px solid var(--line);border-radius:var(--r-md,10px);padding:12px 13px;display:flex;flex-direction:column;gap:10px;}
+    .eq-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+    .eq-name{font-family:var(--sans);font-size:13px;font-weight:800;color:var(--txt);}
+    .eq-sub{font-size:10.5px;color:var(--txt3);margin-top:2px;}
+    .eq-thsel{width:128px;flex:none;}
+    .sel--sm{padding:6px 28px 6px 9px;font-size:11.5px;}
+    .eq-badges{display:flex;gap:5px;flex-wrap:wrap;}
+    .eq-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;}
+    .eq-col{display:flex;flex-direction:column;gap:4px;min-width:0;}
+    .eq-l{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--blue-l);}
+    .eq-i{font-size:11.5px;color:var(--txt2);line-height:1.35;}
+    .eq-note{font-size:11px;color:var(--txt3);font-style:italic;line-height:1.4;}
+    .eq-warn{color:var(--amber);font-style:normal;}
+    .dbg-img{width:100%;height:100%;object-fit:cover;display:block;}
     .th-badge{font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);padding:2px 7px;border-radius:6px;backdrop-filter:blur(4px);}
     .cat{font-size:10px;font-weight:700;letter-spacing:.4px;padding:2px 8px;border-radius:6px;text-transform:uppercase;}
     .cat[data-c="Farming"]{color:var(--green);background:rgba(34,194,119,.14);}
@@ -304,16 +319,34 @@
               </div>
             </div>
             <div class="field">
-              <span class="field-l">Army preset <span class="hint" data-tip="Saved army composition trained before each attack.">?</span></span>
+              <span class="field-l">Army preset <span class="hint" data-tip="Saved army composition trained before each attack. Only presets the backend can deploy are listed.">?</span></span>
               <div class="selwrap">
-                <select class="sel" defaultValue="electro_dragon">
-                  <option value="electro_dragon">electro_dragon</option>
-                  <option value="super_archer">super_archer</option>
-                  <option value="barch">barch</option>
-                  <option value="dragon_loon">dragon_loon</option>
-                  <option value="hog_rider">hog_rider</option>
+                <select class="sel" value="{{ armyPreset }}" onChange="{{ onPresetChange }}">
+                  <sc-for list="{{ presetOptions }}" as="p" hint-placeholder-count="2">
+                    <option value="{{ p.key }}">{{ p.label }}</option>
+                  </sc-for>
                 </select>
               </div>
+            </div>
+            <!-- Army Equipment panel (data-driven from backend catalog) -->
+            <div class="eqcard">
+              <div class="eq-head">
+                <div><div class="eq-name">{{ equip.name }}</div><div class="eq-sub">{{ equip.purpose }} · {{ equip.key }}</div></div>
+                <div class="selwrap eq-thsel"><select class="sel sel--sm" value="{{ equip.th }}" onChange="{{ onEquipTH }}"><sc-for list="{{ equip.thOptions }}" as="t" hint-placeholder-count="10"><option value="{{ t.v }}">{{ t.label }}</option></sc-for></select></div>
+              </div>
+              <div class="eq-badges"><sc-for list="{{ equip.thBadges }}" as="b" hint-placeholder-count="5"><span class="chip">{{ b }}</span></sc-for></div>
+              <sc-if value="{{ equip.thSupported }}" hint-placeholder-val="{{ true }}">
+              <div class="eq-grid">
+                <div class="eq-col"><div class="eq-l">Troops</div><sc-for list="{{ equip.troops }}" as="x" hint-placeholder-count="3"><div class="eq-i">{{ x }}</div></sc-for></div>
+                <div class="eq-col"><div class="eq-l">Heroes</div><sc-for list="{{ equip.heroes }}" as="x" hint-placeholder-count="3"><div class="eq-i">{{ x }}</div></sc-for></div>
+                <div class="eq-col"><div class="eq-l">Spells</div><sc-for list="{{ equip.spells }}" as="x" hint-placeholder-count="3"><div class="eq-i">{{ x }}</div></sc-for></div>
+                <div class="eq-col"><div class="eq-l">Siege machine</div><div class="eq-i">{{ equip.siege }}</div></div>
+              </div>
+              <sc-if value="{{ equip.hasNotes }}" hint-placeholder-val="{{ true }}"><div class="eq-note">{{ equip.notes }}</div></sc-if>
+              </sc-if>
+              <sc-if value="{{ equip.thUnsupported }}" hint-placeholder-val="{{ false }}">
+              <div class="eq-note eq-warn">Not supported for {{ equip.thLabel }}. Supported Town Halls: {{ equip.thBadgeStr }}.</div>
+              </sc-if>
             </div>
             <div class="divider"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
@@ -393,11 +426,12 @@
           <div class="dbgrid">
             <sc-for list="{{ debugShots }}" as="d" hint-placeholder-count="8">
               <div class="dbg">
-                <div class="thumb" style="aspect-ratio:16/10;"><span class="thumb-l">debug capture</span></div>
+                <div class="thumb" style="aspect-ratio:16/10;"><img class="dbg-img" src="{{ d.url }}" loading="lazy" alt="debug capture"></div>
                 <div class="dbg-foot"><span style="font-size:10.5px;color:var(--txt2);">{{ d.name }}</span><span style="font-size:9.5px;color:#4a5160;">{{ d.time }}</span></div>
               </div>
             </sc-for>
           </div>
+          <sc-if value="{{ debugEmpty }}" hint-placeholder-val="{{ true }}"><div style="color:var(--txt3);font-style:italic;padding:10px 2px;">No debug screenshots yet</div></sc-if>
         </div>
       </div>
       </sc-if>
@@ -647,7 +681,8 @@ class Component extends DCLogic {
     busy: { detect: false, attack: false },
     result: { text: 'No action run yet.', type: 'idle' },
     toast: null, confirm: null, modal: null, editId: null, form: {}, formError: '',
-    activePreset: 'E-Drag Spam',
+    activePreset: '',
+    armyPreset: 'broom_witch', presets: [], equipTH: 'all', debugShots: [],
     s: { donations: true, logFile: false, splash: true, debug: true, eventDump: false, randomEvents: true, fatigue: true },
     logs: [
       { time: '14:02:11', level: 'INFO', msg: 'Bot initialized — config loaded from settings.json' },
@@ -689,9 +724,11 @@ class Component extends DCLogic {
     this._timer = setInterval(() => { if (this.state.running) this.setState(st => ({ seconds: st.seconds + 1 })); }, 1000);
     this.loadBackendState();
     this._bridgePoll = setInterval(() => this.pollBackend(), 250);
+    this.refreshDebugShots();
+    this._shotPoll = setInterval(() => { if (this.state.activeTab === 'log') this.refreshDebugShots(); }, 2500);
   }
   componentDidUpdate() { this.persist(); }
-  componentWillUnmount() { clearInterval(this._timer); clearInterval(this._bridgePoll); clearTimeout(this._toast); clearTimeout(this._cp); }
+  componentWillUnmount() { clearInterval(this._timer); clearInterval(this._bridgePoll); clearInterval(this._shotPoll); clearTimeout(this._toast); clearTimeout(this._cp); }
 
   fmt(sec) { const h = Math.floor(sec / 3600), m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0'), s = String(sec % 60).padStart(2, '0'); return `${h}:${m}:${s}`; }
   toggle(k) { this.setState(st => ({ s: { ...st.s, [k]: !st.s[k] }, dirty: true })); }
@@ -712,6 +749,7 @@ class Component extends DCLogic {
     const patch = {};
     if (Array.isArray(data.bases)) patch.bases = data.bases;
     if (Array.isArray(data.armies)) patch.armies = data.armies;
+    if (Array.isArray(data.presets)) patch.presets = data.presets;
     if (data.settings) this.applySettings(data.settings);
     if (Object.keys(patch).length) this.setState(patch);
     this.pushLog('INFO', 'Backend connected');
@@ -746,9 +784,34 @@ class Component extends DCLogic {
     if (x === 'ERROR' || x === 'WARNING' || x === 'DEBUG') return x;
     return 'INFO';
   }
-  copyText(text) {
-    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
-    this.showToast('Link copied');
+  supportedKeys() { const ps = this.state.presets; return (ps && ps.length) ? ps.map(p => p.key) : ['broom_witch', 'electro_dragon']; }
+  normalizePreset(name) {
+    const keys = this.supportedKeys(); const raw = String(name || '').trim();
+    if (keys.includes(raw)) return { key: raw, changed: false };
+    const aliases = { 'broom_witches': 'broom_witch', 'e-drag spam': 'electro_dragon', 'edrag': 'electro_dragon', 'e-drag': 'electro_dragon', 'electro dragon': 'electro_dragon' };
+    const a = aliases[raw.toLowerCase()]; if (a && keys.includes(a)) return { key: a, changed: true };
+    return { key: keys[0] || 'broom_witch', changed: true };
+  }
+  async copyToClipboard(text) {
+    text = String(text == null ? '' : text);
+    try { const api = this.api(); if (api && api.copy_text) { const r = await api.copy_text(text); if (r && r.ok) return true; } } catch (e) {}
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
+    try {
+      const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); try { ta.setSelectionRange(0, text.length); } catch (e) {}
+      const ok = document.execCommand('copy'); document.body.removeChild(ta); if (ok) return true;
+    } catch (e) {}
+    return false;
+  }
+  async copyText(text) {
+    const ok = await this.copyToClipboard(text);
+    if (ok) this.showToast('Copied \u2713', 'success');
+    else { this.pushLog('ERROR', 'Copy failed \u2014 clipboard unavailable'); this.showToast('Copy failed \u2014 clipboard unavailable', 'error'); }
+  }
+  async refreshDebugShots() {
+    const api = this.api(); if (!api || !api.list_debug_screenshots) return;
+    try { const r = await api.list_debug_screenshots(); if (r && Array.isArray(r.shots)) this.setState({ debugShots: r.shots }); } catch (e) {}
   }
   settingsPayload() {
     const s = this.state.s || {};
@@ -774,7 +837,7 @@ class Component extends DCLogic {
       dump_mode: !!s.eventDump,
       random_events: !!s.randomEvents,
       fatigue: !!s.fatigue,
-      army_preset: first('Army preset', this.state.activePreset),
+      army_preset: this.state.armyPreset,
       min_loot: first('Min total loot', '1500000'),
       min_remaining: first('Min remaining', '100000'),
       min_gold: first('Min Gold', '0'),
@@ -811,11 +874,14 @@ class Component extends DCLogic {
     if ('fatigue' in cfg) s.fatigue = !!cfg.fatigue;
     const patch = { s, dirty: false };
     if (cfg.attack_side) patch.strategy = cfg.attack_side;
-    if (cfg.army_preset) patch.activePreset = cfg.army_preset;
+    if (cfg.army_preset !== undefined) {
+      const norm = this.normalizePreset(cfg.army_preset);
+      patch.armyPreset = norm.key;
+      if (norm.changed) { patch.dirty = true; this.pushLog('WARNING', `Unsupported army preset "${cfg.army_preset}"; using "${norm.key}"`); }
+    }
     this.setState(patch);
     setTimeout(() => {
       const map = {
-        'Army preset': [cfg.army_preset],
         'Min total loot': [cfg.min_loot],
         'Min remaining': [cfg.min_remaining],
         'Min Gold': [cfg.min_gold],
@@ -939,7 +1005,29 @@ class Component extends DCLogic {
       .filter(r => !q || r.msg.toLowerCase().includes(q) || r.time.includes(q))
       .map(r => ({ time: r.time, level: r.level, msg: r.msg, msgCls: r.level === 'ERROR' ? 'logmsg err' : 'logmsg' }));
 
-    const debugShots = Array.from({ length: 8 }, (_, i) => ({ name: `cap_${String(i + 1).padStart(3, '0')}.png`, time: `14:0${i % 6}:${String((i * 7) % 60).padStart(2, '0')}` }));
+    const debugShots = st.debugShots || [];
+    const PRESET_FALLBACK = [
+      { key: 'broom_witch', display_name: 'Broom Witch (Event)', purpose: 'Event farming / loot', supported_town_halls: [13,14,15,16,17], troops: [], heroes: [], spells: [], siege: '\u2014', notes: '' },
+      { key: 'electro_dragon', display_name: 'Electro Dragon Spam', purpose: 'Farming / trophies', supported_town_halls: [13,14,15,16,17], troops: [], heroes: [], spells: [], siege: '\u2014', notes: '' }
+    ];
+    const presetList = (st.presets && st.presets.length) ? st.presets : PRESET_FALLBACK;
+    const presetOptions = presetList.map(p => ({ key: p.key, label: p.key }));
+    const cur = presetList.find(p => p.key === st.armyPreset) || presetList[0];
+    const allTHeq = ['9','10','11','12','13','14','15','16','17'];
+    const eqThOptions = [{ v: 'all', label: 'All supported' }].concat(allTHeq.map(n => ({ v: n, label: 'TH' + n })));
+    const supTH = (cur.supported_town_halls || []).map(String);
+    const eqTH = st.equipTH || 'all';
+    const eqOK = eqTH === 'all' ? true : supTH.includes(String(eqTH));
+    const equip = {
+      name: cur.display_name || cur.key, key: cur.key, purpose: cur.purpose || '',
+      th: eqTH, thOptions: eqThOptions,
+      thBadges: (cur.supported_town_halls || []).map(n => 'TH' + n),
+      thBadgeStr: (cur.supported_town_halls || []).map(n => 'TH' + n).join(', '),
+      troops: cur.troops || [], heroes: cur.heroes || [], spells: cur.spells || [],
+      siege: cur.siege || '\u2014', notes: cur.notes || '', hasNotes: !!(cur.notes && cur.notes.length),
+      thSupported: eqOK, thUnsupported: !eqOK,
+      thLabel: eqTH === 'all' ? 'all Town Halls' : ('TH' + eqTH)
+    };
 
     // bases
     const bq = st.baseSearch.trim().toLowerCase();
@@ -984,15 +1072,24 @@ class Component extends DCLogic {
       appStyle, accent,
       running: st.running, notRunning: !st.running,
       statusText: st.running ? 'Bot running' : 'Bot idle', statusColor: st.running ? '#3ee08f' : '#ff6b6b',
-      stepText: st.running ? 'Searching' : 'Idle', uptime: this.fmt(st.seconds), cycle: st.cycle, activePreset: st.activePreset,
+      stepText: st.running ? 'Searching' : 'Idle', uptime: this.fmt(st.seconds), cycle: st.cycle, activePreset: st.armyPreset,
+      armyPreset: st.armyPreset, presetOptions, equip,
+      onPresetChange: (e) => this.setState({ armyPreset: e.target.value, dirty: true }),
+      onEquipTH: (e) => this.setState({ equipTH: e.target.value }),
       s: st.s,
       tog: { donations: () => this.toggle('donations'), logFile: () => this.toggle('logFile'), splash: () => this.toggle('splash'), debug: () => this.toggle('debug'), eventDump: () => this.toggle('eventDump'), randomEvents: () => this.toggle('randomEvents'), fatigue: () => this.toggle('fatigue') },
       strategyOptions, sideOptions,
       logFilters, filteredLogs, logsEmpty: filteredLogs.length === 0, logSearch: st.logSearch, setLogSearch: (e) => this.setState({ logSearch: e.target.value }),
-      debugShots, debugCount: debugShots.length,
+      debugShots, debugCount: debugShots.length, debugEmpty: debugShots.length === 0,
       copyLabel: st.copied ? 'Copied ✓' : 'Copy',
       onClear: () => { this.setState({ logs: [] }); this.showToast('Log cleared', 'info'); },
-      onCopy: () => { const txt = st.logs.map(l => `[${l.time}] ${l.level}  ${l.msg}`).join('\n'); if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {}); this.setState({ copied: true }); clearTimeout(this._cp); this._cp = setTimeout(() => this.setState({ copied: false }), 1500); this.showToast('Log copied to clipboard'); },
+      onCopy: async () => {
+        const lines = filteredLogs.map(l => `[${l.time}] ${l.level}  ${l.msg}`);
+        if (!lines.length) { this.showToast('No log lines to copy', 'info'); return; }
+        const ok = await this.copyToClipboard(lines.join('\n'));
+        if (ok) { this.setState({ copied: true }); clearTimeout(this._cp); this._cp = setTimeout(() => this.setState({ copied: false }), 1500); this.showToast('Copied \u2713', 'success'); }
+        else { this.pushLog('ERROR', 'Log copy failed \u2014 clipboard unavailable'); this.showToast('Copy failed \u2014 clipboard unavailable', 'error'); }
+      },
       // manual
       detectLabel: st.busy.detect ? 'Detecting…' : 'Detect Loot', detectCls: 'btn btn--blue btn--block' + (st.busy.detect ? ' loading' : ''),
       attackLabel: st.busy.attack ? 'Attacking…' : 'Attack Now', attackCls: 'btn btn--green btn--block' + (st.busy.attack ? ' loading' : ''),
@@ -1000,7 +1097,7 @@ class Component extends DCLogic {
       onAttack: () => { if (confirmBeforeAttack) { this.setState({ confirm: { kind: 'attack', title: 'Deploy troops now?', msg: 'This deploys your trained army on the base currently shown in-game. It cannot be recalled.' } }); } else { this.runAttack(); } },
       onReturnHome: () => { this.showToast('Returning to home village', 'info'); this.callApi('run_tool', 'return_home', { settings: this.settingsPayload() }); },
       onOpenGame: () => { this.showToast('Launching game', 'info'); this.callApi('run_tool', 'open_game', { settings: this.settingsPayload() }); },
-      onSnap: () => { this.showToast('Taking screenshot', 'info'); this.callApi('run_tool', 'screenshot', { settings: this.settingsPayload() }); },
+      onSnap: () => { this.showToast('Taking screenshot', 'info'); this.callApi('run_tool', 'screenshot', { settings: this.settingsPayload() }); setTimeout(() => this.refreshDebugShots(), 1500); setTimeout(() => this.refreshDebugShots(), 3500); },
       onReload: async () => { const res = await this.callApi('reload_config'); if (res && res.settings) this.applySettings(res.settings); this.showToast('Config reloaded', 'success'); },
       resultText: st.result.text, resultColor: resColors[st.result.type], resultBar: st.result.type === 'success' ? 'var(--green)' : st.result.type === 'error' ? 'var(--red)' : 'var(--txt3)',
       // header
