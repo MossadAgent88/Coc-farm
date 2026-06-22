@@ -1,0 +1,12 @@
+# Extra dependency for the base-copier detector (src/copy/).
+#
+# opencv-python (>=4.13) and numpy (>=2.4) are ALREADY pinned by the repo's
+# top-level requirements.txt and are reused as-is -- not re-declared here.
+# loguru is likewise already a repo dependency.
+#
+# The only NEW dependency is the Anthropic SDK, used for the single Claude
+# Vision call. It is lazy-imported in src/copy/vision.py, so importing the
+# package or running the test-suite (which injects a fake transport) does NOT
+# require it. Install it only when you want live detection:
+
+anthropic>=0.40,<1.0
