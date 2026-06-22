@@ -55,8 +55,10 @@ class VisionTransport(Protocol):
 
 # --- transport hardening knobs ---
 _MAX_IMAGE_LONG_SIDE = 1568   # Anthropic's recommended max long side for vision
-_MAX_ATTEMPTS = 3             # total tries
-_BASE_DELAY_S = 1.0           # backoff: 1s, 2s, (4s) ...
+_SERVER_ATTEMPTS = 4          # 5xx / connection: 3 retries -> sleeps 1s,2s,4s
+_SERVER_BASE_S = 1.0
+_RATELIMIT_ATTEMPTS = 5       # 429: 4 retries -> sleeps 2s,4s,8s,16s (longer)
+_RATELIMIT_BASE_S = 2.0
 _CLIENT_TIMEOUT_S = 60.0      # explicit client-side timeout
 
 
@@ -104,46 +106,84 @@ def _rescale_detection_coords(text: str, scale: float) -> str:
     return json.dumps(data)
 
 
-def _retryable_exceptions() -> tuple[type[BaseException], ...]:
-    """Connection/timeout errors worth retrying. Auth errors are NOT included."""
-    errs: tuple[type[BaseException], ...] = (TimeoutError, ConnectionError)
+def _retry_policies() -> list[tuple[tuple[type[BaseException], ...], int, float]]:
+    """Backoff policies as (exception_types, max_attempts, base_delay_seconds).
+
+    Two tiers, resolved lazily so anthropic/httpx stay optional:
+      * 429 rate-limit -> longer backoff (2s, 4s, 8s, 16s)
+      * 5xx + transient connection/timeout -> short backoff (1s, 2s, 4s)
+    4xx client errors (400/401/403/404) are in NEITHER list, so they are never
+    retried -- they propagate immediately.
+    """
+    server: list[type[BaseException]] = [TimeoutError, ConnectionError]
+    rate: list[type[BaseException]] = []
     try:
         import anthropic  # noqa: PLC0415
 
-        errs = (anthropic.APIConnectionError, anthropic.APITimeoutError) + errs
+        server += [
+            anthropic.InternalServerError,  # 5xx (502 / 503 / ...)
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+        ]
+        rate += [anthropic.RateLimitError]  # 429
     except Exception:  # pragma: no cover - anthropic optional
         pass
-    return errs
+    try:
+        import httpx  # noqa: PLC0415
+
+        server += [
+            httpx.RemoteProtocolError,
+            httpx.ReadTimeout,
+            httpx.ConnectTimeout,
+        ]
+    except Exception:  # pragma: no cover - httpx optional
+        pass
+
+    policies: list[tuple[tuple[type[BaseException], ...], int, float]] = []
+    if rate:
+        policies.append((tuple(rate), _RATELIMIT_ATTEMPTS, _RATELIMIT_BASE_S))
+    policies.append((tuple(server), _SERVER_ATTEMPTS, _SERVER_BASE_S))
+    return policies
 
 
 def _call_with_retries(
     fn,
     *,
-    retryable: tuple[type[BaseException], ...],
-    attempts: int = _MAX_ATTEMPTS,
-    base_delay: float = _BASE_DELAY_S,
+    policies: list[tuple[tuple[type[BaseException], ...], int, float]],
     sleep=time.sleep,
 ):
-    """Call ``fn`` with exponential backoff on ``retryable`` errors only.
+    """Call ``fn``, retrying per ``policies`` with exponential backoff.
 
-    Waits base_delay * 2**i before retry i (1s, 2s, ...). Non-retryable
-    exceptions (e.g. authentication) propagate immediately without retry. After
-    the final attempt the last retryable exception is re-raised.
+    Each policy is (exception_types, max_attempts, base_delay). On a matching
+    error, wait ``base_delay * 2**(n-1)`` before retry ``n`` (counted per
+    policy), up to that policy's max_attempts, then re-raise. Exceptions
+    matching no policy (e.g. 400/401/403/404) propagate immediately.
     """
-    last: BaseException | None = None
-    for i in range(attempts):
+    counts: dict[int, int] = {}
+    while True:
         try:
             return fn()
-        except retryable as exc:  # type: ignore[misc]
-            last = exc
+        except BaseException as exc:
+            idx = next(
+                (
+                    i
+                    for i, (types_, _a, _b) in enumerate(policies)
+                    if isinstance(exc, types_)
+                ),
+                None,
+            )
+            if idx is None:
+                raise
+            _types, attempts, base_delay = policies[idx]
+            counts[idx] = counts.get(idx, 0) + 1
+            n = counts[idx]
             logger.warning(
-                f"vision call failed (attempt {i + 1}/{attempts}): "
+                f"vision call failed (attempt {n}/{attempts}): "
                 f"{exc.__class__.__name__}: {exc}"
             )
-            if i < attempts - 1:
-                sleep(base_delay * (2 ** i))
-    assert last is not None
-    raise last
+            if n >= attempts:
+                raise
+            sleep(base_delay * (2 ** (n - 1)))
 
 
 @dataclass
@@ -218,7 +258,7 @@ class AnthropicTransport:
 
         try:
             msg = _call_with_retries(
-                _do, retryable=_retryable_exceptions(), sleep=self._sleep
+                _do, policies=_retry_policies(), sleep=self._sleep
             )
         except Exception as exc:  # final failure -> explicit, never silent
             from src.copy.detect import DetectionError  # lazy: avoid circular import
