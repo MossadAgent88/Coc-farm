@@ -158,3 +158,64 @@ Remaining (for Claude/Codex — do NOT fix from cleanup task):
 - `src/paste/roundtrip.py:65:30` — `Cannot access attribute
   "detect_from_device" for class "object"`. The injected detector object
   needs a Protocol/ABC type instead of `object`. (Codex / paster owner.)
+
+## Ruff findings (cleanup task, 2026-06-22)
+
+`ruff check --select F401 src/` → **1 finding, in a forbidden file:**
+- `src/copy/detect.py:35` — `GridRegistrationError` imported but unused (F401).
+  NOT fixed (detector-owned by Claude). Claude: either remove the import or
+  use the symbol.
+
+`ruff check --select I src/` → **7 import-sort findings.** Fixed the 4 in
+allowed paste files (`src/paste/{__init__,__main__,accounts,cli}.py`). Left
+the 3 in forbidden files for their owners:
+- `src/copy/__init__.py:11` (Claude)
+- `src/copy/schema.py:11` (Claude)
+- `src/paste/editor.py:21` (Codex)
+
+## What's left / needs Claude or Codex attention
+
+### For Claude (detector owner — `src/copy/*`)
+
+1. **`src/copy/detect.py:484`** — `import cocbot.io` doesn't resolve inside
+   the `coc-base-copier/` sub-project. Either make `cocbot` an optional
+   dependency of the base-copier or guard the import so the detector is
+   importable/testable without the bot package.
+2. **`src/copy/detect.py:35`** — unused `GridRegistrationError` import (F401).
+3. **`src/copy/vision.py:275`** — `response.content` block `.text` access is
+   unsafe across the Anthropic SDK union (ThinkingBlock/ToolUseBlock/etc.).
+   Add an `isinstance(block, TextBlock)` guard or `getattr(..., "text", "")`.
+4. **Import sort** in `src/copy/__init__.py` and `src/copy/schema.py` (I001).
+5. **0 wall chains bug** (README troubleshooting §): the paster README
+   references a known wall-grouping regression where the detector reports N
+   walls but the paster yields 0 chains. Please confirm whether this is
+   still reproducible on `origin/main` so the README can drop the
+   conditional wording.
+
+### For Codex (paster owner — `src/paste/{editor,place,roundtrip}.py`)
+
+1. **`src/paste/editor.py:21-23`** — `cocbot.io` / `cocbot.vision` imports
+   don't resolve inside `coc-base-copier/` (same cross-project issue as
+   the detector).
+2. **`src/paste/editor.py:333-335`** — cv2 `findContours` return index is
+   typed `tuple[()]`; needs an assertion or a cast.
+3. **`src/paste/roundtrip.py:65`** — the injected detector is typed `object`;
+   use a `Protocol` (`SupportsDetectFromDevice`) so `.detect_from_device`
+   type-checks.
+4. **Import sort** in `src/paste/editor.py` (I001).
+
+### Not verifiable from this cleanup (no device / no API key in CI)
+
+- Live end-to-end `roundtrip()` match percentage (needs a real
+  `ANTHROPIC_API_KEY` + working network — see "Remaining blocker" above).
+- The live detector `APIConnectionError` (peer closed connection) last seen
+  in Round 2.5. The transport now retries it, but a real run is needed to
+  confirm it's resolved on the user's network.
+
+### Cleanup summary (this task)
+
+- **7 commits** (1 per task: README, requirements, typecheck, tests, CI,
+  multi-account, final pass).
+- **Pytest: 55 → 68 passed** (+13 new tests).
+- **Pyright: 20 → 19 errors** (1 fixed in-scope; 19 logged for owners).
+- **Ruff: F401 1 (forbidden), I001 7 → 4 fixed / 3 logged.**

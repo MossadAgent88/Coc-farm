@@ -12,8 +12,7 @@ from loguru import logger
 
 from src.copy.detect import DetectionError
 from src.paste.accounts import AccountError, load_account
-from src.paste.layout import LayoutContractError
-from src.paste.layout import load_layout
+from src.paste.layout import LayoutContractError, load_layout
 from src.paste.place import build_plan, format_plan, paste_layout
 from src.paste.roundtrip import RoundTripFailure, roundtrip
 
