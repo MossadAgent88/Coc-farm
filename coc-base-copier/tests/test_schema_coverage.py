@@ -135,7 +135,9 @@ def _full_layout() -> Layout:
                 tile_x=20,
                 tile_y=20,
                 level=15,
-                confidence=0.97,
+                confidence=0.78,
+                original_confidence=0.65,
+                notes="confidence calibrated from 0.65 to 0.78",
                 pixel_x=960.0,
                 pixel_y=540.0,
             ),
@@ -176,7 +178,10 @@ def test_full_layout_roundtrip_preserves_v1_1_0_fields():
     # pixel + footprint mirrors survive the round-trip
     obj = next(o for o in restored.objects if o.id == "obj_0000")
     assert obj.pixel_x == 960.0 and obj.pixel_y == 540.0
+    assert obj.original_confidence == 0.65
+    assert obj.notes == "confidence calibrated from 0.65 to 0.78"
     d = obj.to_dict()
+    assert d["original_confidence"] == 0.65
     assert d["footprint"] == [4, 4]
     assert d["footprint_w"] == 4 and d["footprint_h"] == 4
     # grid corners survive (list<->tuple coercion)

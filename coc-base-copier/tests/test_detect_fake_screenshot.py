@@ -82,7 +82,7 @@ def test_low_confidence_is_flagged_not_dropped(screenshot_path, grid):
         "town_hall_level": 13,
         "detections": [
             detection(grid, (20, 20), "town_hall", "defense", level=13, conf=0.98),
-            detection(grid, (8, 8), "mortar", "defense", level=9, conf=0.5),  # low
+            detection(grid, (8, 8), "mortar", "defense", level=9, conf=0.49),  # low
         ],
     }
     transport = FakeTransport(payload)
@@ -92,6 +92,58 @@ def test_low_confidence_is_flagged_not_dropped(screenshot_path, grid):
     # ...it is surfaced as a warning, and vision was re-asked the max times.
     assert transport.calls == 3
     assert any("confidence" in w.lower() for w in layout.warnings)
+    assert layout.low_confidence_count() == 1
+
+
+def test_known_building_confidence_is_calibrated_and_accepted(screenshot_path, grid):
+    payload = {
+        "view": "editor",
+        "town_hall_level": 13,
+        "detections": [
+            detection(grid, (20, 20), "town_hall", "defense", level=13, conf=0.98),
+            detection(grid, (8, 8), "cannon", "defense", level=9, conf=0.65),
+        ],
+    }
+    transport = FakeTransport(payload)
+    layout = detect(screenshot_path, transport=transport)
+
+    cannon = next(o for o in layout.objects if o.type == "cannon")
+    assert transport.calls == 1
+    assert cannon.confidence >= 0.75
+    assert cannon.confidence <= 0.85
+    assert cannon.original_confidence == 0.65
+    assert cannon.notes is not None
+    assert "confidence calibrated" in cannon.notes
+    assert layout.low_confidence_count() == 0
+    assert any("confidence calibrated" in w.lower() for w in layout.warnings)
+
+
+@pytest.mark.parametrize(
+    ("type_key", "category"),
+    [
+        ("barbarian_statue", "decoration"),
+        ("tree", "obstacle"),
+    ],
+)
+def test_non_actionable_low_confidence_is_not_calibrated(
+    screenshot_path, grid, type_key, category
+):
+    payload = {
+        "view": "editor",
+        "town_hall_level": 13,
+        "detections": [
+            detection(grid, (20, 20), "town_hall", "defense", level=13, conf=0.98),
+            detection(grid, (8, 8), type_key, category, level=None, conf=0.65),
+        ],
+    }
+    transport = FakeTransport(payload)
+    layout = detect(screenshot_path, transport=transport)
+
+    obj = next(o for o in layout.objects if o.type == type_key)
+    assert transport.calls == 3
+    assert obj.confidence == 0.65
+    assert obj.original_confidence is None
+    assert not (obj.notes and "confidence calibrated" in obj.notes)
     assert layout.low_confidence_count() == 1
 
 

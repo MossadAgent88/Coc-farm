@@ -110,6 +110,7 @@ class LayoutObject:
     footprint: tuple[int, int] | None = None
     is_trap: bool = False
     confidence: float = 1.0
+    original_confidence: float | None = None
     notes: str | None = None
     pixel_x: float | None = None  # raw vision output (original-image px)
     pixel_y: float | None = None
@@ -131,6 +132,8 @@ class LayoutObject:
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
+        if self.original_confidence is None:
+            d.pop("original_confidence", None)
         fw, fh = self.footprint or (1, 1)
         d["footprint"] = [fw, fh]
         d["footprint_w"] = fw
@@ -153,6 +156,11 @@ class LayoutObject:
             footprint=(tuple(fp) if fp else None),  # type: ignore[arg-type]
             is_trap=bool(d.get("is_trap", False)),
             confidence=float(d.get("confidence", 1.0)),
+            original_confidence=(
+                None
+                if d.get("original_confidence") is None
+                else float(d["original_confidence"])
+            ),
             notes=d.get("notes"),
             pixel_x=d.get("pixel_x"),
             pixel_y=d.get("pixel_y"),

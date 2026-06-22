@@ -13,7 +13,12 @@ from loguru import logger
 from src.copy.detect import DetectionError
 from src.paste.accounts import AccountError, load_account
 from src.paste.layout import LayoutContractError, load_layout
-from src.paste.place import build_plan, format_plan, paste_layout
+from src.paste.place import (
+    DEFAULT_TARGET_TH,
+    build_plan,
+    format_plan,
+    paste_layout,
+)
 from src.paste.roundtrip import RoundTripFailure, roundtrip
 
 
@@ -30,6 +35,16 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Account name from accounts/<name>.toml. Overrides --device with "
             "the account's adb_serial."
+        ),
+    )
+    parser.add_argument(
+        "--live",
+        "--confirm-live",
+        dest="live",
+        action="store_true",
+        help=(
+            "Actually tap the connected device. Without this flag, paste and "
+            "--roundtrip run as a safe dry-run and never touch the screen."
         ),
     )
     args = parser.parse_args(argv)
@@ -49,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     if not _validate_input_file(layout_path):
         return 1
 
+    if _is_sample_layout(layout_path):
+        print("WARNING: this looks like bundled SAMPLE data (e.g. samples/test_village.json).")
+        print("It is stale and does NOT match your live base; never paste it onto a real village.")
+
     resume = True
     if args.no_resume:
         resume = False
@@ -58,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         try:
             bundle = load_layout(layout_path)
-            print(format_plan(build_plan(bundle)))
+            print(format_plan(build_plan(bundle, target_th=DEFAULT_TARGET_TH)))
             return 0
         except (DetectionError, json.JSONDecodeError, LayoutContractError) as exc:
             _print_layout_load_error(layout_path, exc)
@@ -73,13 +92,23 @@ def main(argv: list[str] | None = None) -> int:
                 layout_path = detected_path
                 if not _validate_input_file(layout_path):
                     return 1
-                print("Step 2/2: Pasting...")
+            if not args.live:
+                print("Detector finished. Refusing to paste (--roundtrip) without --live.")
+                print("Re-run with --live to paste onto the device, or --dry-run to preview.")
+                _print_plan_if_possible(layout_path)
+                return 0
+            print("Step 2/2: Pasting...")
             if device_serial:
                 _configure_device(device_serial)
             report = roundtrip(layout_path)
             print(f"Round-trip match: {report.match_percentage:.2f}%")
             return 0
 
+        if not args.live:
+            print("Safe mode: --live not set, so nothing will be tapped on the device.")
+            print("Showing the dry-run plan instead. Re-run with --live to paste for real.")
+            _print_plan_if_possible(layout_path)
+            return 0
         if device_serial:
             _configure_device(device_serial)
         summary = paste_layout(layout_path, resume=resume)
@@ -117,6 +146,22 @@ def _validate_input_file(layout_path: Path) -> bool:
         print("Detector probably failed. Re-run: python -m src.copy ...")
         return False
     return True
+
+
+def _is_sample_layout(layout_path: Path) -> bool:
+    name = layout_path.name.lower()
+    parts = {part.lower() for part in layout_path.parts}
+    return name == "test_village.json" or "samples" in parts
+
+
+def _print_plan_if_possible(layout_path: Path) -> None:
+    if layout_path.suffix.lower() != ".json":
+        return
+    try:
+        bundle = load_layout(layout_path)
+        print(format_plan(build_plan(bundle, target_th=DEFAULT_TARGET_TH)))
+    except Exception as exc:  # best-effort preview only
+        print(f"(could not render plan: {exc})")
 
 
 def _print_layout_load_error(layout_path: Path, exc: BaseException) -> None:

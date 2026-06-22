@@ -15,6 +15,11 @@ if TYPE_CHECKING:
     from src.paste.editor import EditorSession
 
 MAX_RETRIES = 3
+DEFAULT_TARGET_TH = 18
+# type -> minimum target TH at which this building is stale/invalid as a
+# standalone shop item and must be skipped rather than pasted (e.g. a detector
+# label that no longer maps to a real, separately-placeable building).
+STALE_AT_TH = {"eagle_artillery": 17}
 PLACE_ORDER = {
     "defense": 0,
     "resource": 1,
@@ -83,6 +88,11 @@ class PasteRunner:
 
     def run(self, actions: Iterable[PlacementAction]) -> PasteSummary:
         placed = skipped = failed = 0
+        # Editor-mode loss and refused off-screen taps are FATAL: stop at once,
+        # never keep clicking. Imported lazily (editor pulls cv2/numpy).
+        from src.paste.editor import EditorModeError, EditorSafetyError
+
+        fatal_errors = (EditorModeError, EditorSafetyError)
         try:
             for action in actions:
                 if self.state.is_complete(action.key):
@@ -102,6 +112,15 @@ class PasteRunner:
                         placed += 1
                         break
                     except KeyboardInterrupt:
+                        self.state.flush()
+                        raise
+                    except fatal_errors as exc:
+                        # Editor mode lost or an unsafe/off-screen tap was refused:
+                        # STOP now. Do NOT retry by clicking more random places.
+                        logger.error(
+                            f"Aborting paste (no retry) on {action.key}: {exc}"
+                        )
+                        self._record(action, "failed", retry_count, str(exc))
                         self.state.flush()
                         raise
                     except Exception as exc:
@@ -152,7 +171,15 @@ class PasteRunner:
         )
 
 
-def build_plan(layout: LayoutBundle) -> list[PlacementAction]:
+def build_plan(
+    layout: LayoutBundle, *, target_th: int = DEFAULT_TARGET_TH
+) -> list[PlacementAction]:
+    # Imported lazily (editor pulls cv2/numpy). Reusing the editor's own lookup
+    # keeps "is this placeable?" identical to what the editor will actually do,
+    # so we never plan a placement the editor would later refuse or a tap that
+    # would land off-screen.
+    from src.paste.editor import _shop_slot_from_object, shop_slot_point_for
+
     actions: list[PlacementAction] = []
     for obj in sorted(layout.objects, key=_object_sort_key):
         if obj.is_wall:
@@ -175,6 +202,38 @@ def build_plan(layout: LayoutBundle) -> list[PlacementAction]:
                     obj=obj,
                     reason=f"trap confidence {obj.confidence:.2f} below 0.70",
                 )
+            )
+            continue
+        # Check stale TH rules before shop-slot lookup so invalid TH18 objects
+        # do not get mislabeled as off-screen shop items.
+        stale_min_th = STALE_AT_TH.get(obj.type)
+        if stale_min_th is not None and target_th >= stale_min_th:
+            actions.append(
+                PlacementAction(
+                    kind="skip",
+                    key=obj.key,
+                    obj=obj,
+                    reason=(
+                        f"{obj.type!r} is invalid/stale for TH{target_th} "
+                        "(not a standalone placeable building); not pasted"
+                    ),
+                )
+            )
+            continue
+        if shop_slot_point_for(obj) is None:
+            if _shop_slot_from_object(obj) is None:
+                reason = (
+                    f"no shop slot mapping for {obj.type!r}; "
+                    "not placeable from current editor shop layout"
+                )
+            else:
+                reason = (
+                    f"shop slot for {obj.type!r} is off-screen on this resolution "
+                    "(needs horizontal scrolling, which is unsupported); skipping "
+                    "instead of tapping an impossible coordinate"
+                )
+            actions.append(
+                PlacementAction(kind="skip", key=obj.key, obj=obj, reason=reason)
             )
             continue
         if obj.low_confidence:
@@ -210,7 +269,10 @@ def paste_layout(
     editor: EditorSession | None = None,
 ) -> PasteSummary:
     bundle = load_layout(layout_path)
-    plan = build_plan(bundle)
+    # Target TH is the destination account (default TH18), NOT the source
+    # layout's town_hall (which may be stale, e.g. the TH15 sample). Using the
+    # configured default ensures TH18 stale/invalid rules (eagle_artillery) apply.
+    plan = build_plan(bundle, target_th=DEFAULT_TARGET_TH)
     if dry_run:
         print(format_plan(plan))
         return PasteSummary(placed=0, skipped=sum(a.kind == "skip" for a in plan), failed=0)

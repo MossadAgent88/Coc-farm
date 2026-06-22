@@ -309,30 +309,23 @@ Rules:
 - Each wall piece is its own detection with type "wall" (do not group them).
 - Traps are only visible in the editor/layout view; if view is "normal", report
   the traps you can see (often none) and rely on confidence to flag uncertainty.
+- Set confidence honestly. Anything you are unsure about should be < 0.7.
 - px/py are PIXEL coordinates of each object's center, measured from the
   top-left of the image you are shown. Report where each object APPEARS in
   pixels -- do NOT compute tile/grid coordinates or footprint sizes; the
   caller derives those from the pixel center plus its own grid calibration.
+- Confidence calibration: for clear, visible buildings/defenses/collectors with obvious shape and location, use confidence >= 0.85 instead of timid low values. Do not return confidence < 0.5 for clear visible buildings. Use lower confidence only when partially hidden, ambiguous, or uncertain.
+- defenses have very distinctive shapes.
+- drill / collector mechanism.
+- Few-shot confidence examples: clear obvious building = 0.95; partially occluded or ambiguous building = 0.6.
+- Confidence rules are strict: if you can identify the building type from visible pixels, return high confidence.
+- Clear, visible defenses have very distinctive shapes; use confidence 0.90 to 0.98.
+- Clear collectors, storages, barracks, camps, heroes, traps, and special buildings should usually be 0.85 to 0.98.
+- Use confidence 0.95 for a clear obvious building.
+- Use confidence 0.6 only for partially occluded, tiny, shadowed, or genuinely ambiguous objects.
+- Do not return confidence < 0.5 for clear visible buildings.
+- Do not be timid: low confidence is worse than confident classification when the object is visually clear.
 - Output JSON ONLY. No commentary, no code fences.
-
-Confidence calibration (IMPORTANT -- be decisive, not timid):
-- You MUST commit to confidence >= 0.85 for any building you can clearly see and
-  identify. Reserve confidence < 0.85 ONLY for buildings that are partially
-  occluded (by troops, another building, or UI) or sitting at the very edge of
-  the diamond. Do NOT return confidence < 0.5 for anything you can name.
-- DEFENSES have very distinctive shapes (cannon, archer_tower, mortar,
-  wizard_tower, air_defense, x_bow, inferno_tower, eagle_artillery, scattershot,
-  bomb_tower, air_sweeper, monolith). If you can identify the defense type, you
-  ARE confident -- return 0.9 or higher.
-- COLLECTORS / MINES (gold_mine, elixir_collector, dark_elixir_drill): identify
-  them by the drill / collector mechanism (the pump, drill head, or collected
-  resource on top), NOT by the base-building silhouette. Once identified, return
-  0.85 or higher.
-
-Examples of correct confidence:
-- A fully visible, clearly centered cannon you can identify -> confidence 0.95.
-- An archer_tower half-hidden behind deployed troops, type still recognizable
-  but partially obscured -> confidence 0.6.
 """
 
 

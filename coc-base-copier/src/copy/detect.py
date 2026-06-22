@@ -248,6 +248,36 @@ def _clamp_anchor(anchor: int, footprint: int) -> int:
 # four collide, the building is skipped (robust to vision's imperfect centers).
 _NUDGES = ((0, 0), (1, 0), (-1, 0), (0, 1))
 
+_CALIBRATABLE_CATEGORIES = frozenset(("defense", "resource", "army"))
+_CALIBRATION_INPUT_MIN = 0.50
+_CALIBRATION_INPUT_MAX = 0.75
+_CALIBRATION_OUTPUT_MIN = 0.75
+_CALIBRATION_OUTPUT_MAX = 0.85
+
+
+def _confidence_calibration(
+    type_key: str, confidence: float
+) -> tuple[float, str | None]:
+    """Lift conservative confidence only for schema-known actionable buildings."""
+    spec = KNOWN_TYPES.get(type_key)
+    if spec is None:
+        return confidence, None
+    category = spec[2]
+    if category not in _CALIBRATABLE_CATEGORIES:
+        return confidence, None
+    if not (_CALIBRATION_INPUT_MIN <= confidence < _CALIBRATION_INPUT_MAX):
+        return confidence, None
+
+    span_in = _CALIBRATION_INPUT_MAX - _CALIBRATION_INPUT_MIN
+    span_out = _CALIBRATION_OUTPUT_MAX - _CALIBRATION_OUTPUT_MIN
+    calibrated = _CALIBRATION_OUTPUT_MIN + (
+        (confidence - _CALIBRATION_INPUT_MIN) / span_in
+    ) * span_out
+    calibrated = min(max(calibrated, _CALIBRATION_OUTPUT_MIN), _CALIBRATION_OUTPUT_MAX)
+    return round(calibrated, 3), (
+        f"known actionable {category} type with specific model label"
+    )
+
 
 def _assemble(
     vres: VisionResult, grid: Grid
@@ -278,7 +308,8 @@ def _assemble(
     for det in buildings:
         type_key = str(det["type"])
         px, py = float(det["px"]), float(det["py"])
-        conf = float(det.get("confidence", 1.0))
+        original_conf = float(det.get("confidence", 1.0))
+        conf, calibration_reason = _confidence_calibration(type_key, original_conf)
         level = det.get("level")
         level = None if level is None else int(level)
 
@@ -316,6 +347,20 @@ def _assemble(
         if type_key not in KNOWN_TYPES:
             warnings.append(f"unknown type {type_key!r} kept as-is at ({nx},{ny})")
 
+        notes = det.get("notes")
+        if calibration_reason is not None:
+            calibration_note = (
+                f"confidence calibrated from {original_conf:.2f} to {conf:.2f}: "
+                f"{calibration_reason}"
+            )
+            notes = f"{notes}; {calibration_note}" if notes else calibration_note
+            warnings.append(f"{oid} ({type_key}) {calibration_note}")
+            logger.info(
+                f"confidence calibration: type={type_key} "
+                f"original={original_conf:.2f} calibrated={conf:.2f} "
+                f"reason={calibration_reason}"
+            )
+
         obj = LayoutObject(
             id=oid,
             category=det.get("category", "decoration"),
@@ -326,6 +371,10 @@ def _assemble(
             level=level,
             footprint=(fw, fh),
             confidence=conf,
+            original_confidence=(
+                original_conf if calibration_reason is not None else None
+            ),
+            notes=notes,
             pixel_x=px,
             pixel_y=py,
         )
