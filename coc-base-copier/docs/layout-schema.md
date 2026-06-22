@@ -1,6 +1,12 @@
 # CoC Base Copier — Canonical Layout Schema
 
-`schema_version: "1.0.0"`
+`schema_version: "1.1.0"`
+
+> **v1.1.0** — vision now returns building **pixel centers only**; the detector
+> converts them to tiles via the calibrated grid, centers each type's
+> **footprint** (`BUILDING_FOOTPRINTS` in `schema.py`) on that center tile, and
+> resolves overlaps by clamping/nudging or skipping. Each object gains
+> `pixel_x`, `pixel_y` (raw vision output) and `footprint_w`, `footprint_h`.
 
 This document defines the JSON produced by the **detector** (`src/copy/detect.py`)
 and consumed by the future **paster**. It is the contract between the two halves
@@ -60,7 +66,7 @@ so the layout is resolution-independent and idempotent.
 
 ```jsonc
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "source": {
     "kind": "screenshot",              // screenshot | device | clan_chat | war | fc
     "image_id": "sha256:ab12...",      // stable hash of the source image, for dedupe/idempotency
@@ -109,9 +115,13 @@ pieces.
   "category": "defense",            // defense | resource | army | trap | obstacle | decoration
   "type": "cannon",                 // canonical snake_case type key (see section 6)
   "level": 14,                      // integer; null if unreadable (logged in warnings)
-  "tile_x": 21,                     // 0..43, anchor (top) tile
-  "tile_y": 18,                     // 0..43, anchor (top) tile
-  "footprint": [3, 3],              // [w, h] in tiles; defaults from type table if omitted
+  "pixel_x": 812,                   // raw vision output: object center X in image pixels
+  "pixel_y": 460,                   // raw vision output: object center Y in image pixels
+  "tile_x": 20,                     // 0..43, footprint anchor (top tile), computed from pixel+grid
+  "tile_y": 17,                     // 0..43, footprint anchor (top tile)
+  "footprint": [3, 3],              // [w, h] in tiles (from BUILDING_FOOTPRINTS)
+  "footprint_w": 3,                 // mirror of footprint[0]
+  "footprint_h": 3,                 // mirror of footprint[1]
   "rotation": 0,                    // degrees, one of 0|90|180|270. Most buildings: 0.
   "is_trap": false,                 // convenience mirror of category=="trap"
   "confidence": 0.91,               // 0..1 model confidence for this detection
@@ -127,10 +137,30 @@ pieces.
 | `category`   | yes | one of the 6 enums; drives paster behavior |
 | `type`       | yes | canonical key; unknown types allowed but flagged in `warnings` |
 | `level`      | no  | `null` allowed, never invented — a guessed level is worse than a known gap |
-| `tile_x/y`   | yes | integer, `0..43`, **anchor tile** |
-| `footprint`  | no  | `[w,h]`; if omitted, paster looks it up by `type` |
+| `pixel_x/y`  | yes | raw vision center in image pixels; the detector's input to `grid.pixel_to_tile` |
+| `tile_x/y`   | yes | integer, `0..43`, **footprint anchor (top tile)** = center tile minus `(footprint-1)//2`, clamped/nudged in-bounds |
+| `footprint`  | yes | `[w,h]` tiles from `BUILDING_FOOTPRINTS`; the footprint is centered on the detected center tile |
+| `footprint_w/h` | yes | scalar mirrors of `footprint` for convenience |
 | `rotation`   | yes | `0/90/180/270`; only a few objects (e.g. some traps, x-bows) use non-zero |
 | `confidence` | yes | detections `< 0.7` are re-asked, then either resolved or surfaced in `warnings` — **never silently dropped** |
+
+### Coordinate pipeline & collision robustness (v1.1.0)
+
+Vision reports only **pixel centers** (`pixel_x`, `pixel_y`) — it never does tile
+or footprint math (it's unreliable at that). The detector then, per object:
+
+1. `grid.pixel_to_tile(pixel_x, pixel_y)` -> the **center tile** (clamped 0..43);
+2. looks up `(footprint_w, footprint_h)` from `BUILDING_FOOTPRINTS`;
+3. anchors the footprint **centered** on the center tile
+   (`anchor = center - (footprint-1)//2`), clamped so it stays fully in-bounds;
+4. resolves overlaps: try the spot, then nudge up to 3 tiles; if still blocked,
+   **skip** the building and log a warning;
+5. **walls** are 1x1 — any wall tile that lands on a building tile is skipped
+   (logged), never failing the whole layout.
+
+The run only fails if **more than 10%** of buildings had to be skipped. This
+makes the detector tolerant of vision's imperfect centering instead of
+rejecting an entire otherwise-good layout over one overlap.
 
 ### Categories
 

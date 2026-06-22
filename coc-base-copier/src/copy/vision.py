@@ -297,7 +297,7 @@ Analyze this Clash of Clans village screenshot. Return ONE JSON object:
       "type": "<canonical snake_case key, e.g. cannon, archer_tower, wall>",
       "category": "defense"|"resource"|"army"|"trap"|"obstacle"|"decoration",
       "level": <int or null>,             // null if you cannot read it; never guess
-      "px": <int>, "py": <int>,           // pixel center of the object in THIS image
+      "px": <int>, "py": <int>,           // CENTER in PIXELS from the image top-left
       "rotation": 0|90|180|270,
       "confidence": <float 0..1>          // your certainty for THIS object
     }
@@ -310,7 +310,10 @@ Rules:
 - Traps are only visible in the editor/layout view; if view is "normal", report
   the traps you can see (often none) and rely on confidence to flag uncertainty.
 - Set confidence honestly. Anything you are unsure about should be < 0.7.
-- px/py must be the on-screen pixel center of the object footprint.
+- px/py are PIXEL coordinates of each object's center, measured from the
+  top-left of the image you are shown. Report where each object APPEARS in
+  pixels -- do NOT compute tile/grid coordinates or footprint sizes; the
+  caller derives those from the pixel center plus its own grid calibration.
 - Output JSON ONLY. No commentary, no code fences.
 """
 
@@ -357,7 +360,9 @@ def detect_objects(
     """
     transport = transport or AnthropicTransport()
     png = _encode_png(image)
-    text = transport.complete(image_png=png, prompt=USER_PROMPT, system=SYSTEM_PROMPT)
+    h, w = image.shape[:2]
+    prompt = f"The screenshot is about {w}x{h} pixels.\n\n" + USER_PROMPT
+    text = transport.complete(image_png=png, prompt=prompt, system=SYSTEM_PROMPT)
 
     data = json.loads(_strip_json(text))
     if not isinstance(data, dict):

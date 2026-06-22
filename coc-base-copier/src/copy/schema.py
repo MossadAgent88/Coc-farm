@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import Any, Literal
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 GRID_SIZE = 44  # tiles per side; tile indices are 0..GRID_SIZE-1
 MAX_TILE = GRID_SIZE - 1
 CONFIDENCE_FLOOR = 0.7  # below this a detection is re-asked, never silently used
@@ -83,10 +83,17 @@ TRAP_TYPES: frozenset[str] = frozenset(
 )
 
 
+# Tile footprint (width, height) per building type. Derived from KNOWN_TYPES so
+# there is a single source of truth. detect.py centers this footprint on the
+# building's detected center tile -- vision never does tile/footprint math.
+BUILDING_FOOTPRINTS: dict[str, tuple[int, int]] = {
+    t: (w, h) for t, (w, h, _c) in KNOWN_TYPES.items()
+}
+
+
 def default_footprint(type_key: str) -> tuple[int, int]:
     """Best-effort footprint for a type; (1, 1) for unknown types."""
-    spec = KNOWN_TYPES.get(type_key)
-    return (spec[0], spec[1]) if spec else (1, 1)
+    return BUILDING_FOOTPRINTS.get(type_key, (1, 1))
 
 
 @dataclass
@@ -104,6 +111,8 @@ class LayoutObject:
     is_trap: bool = False
     confidence: float = 1.0
     notes: str | None = None
+    pixel_x: float | None = None  # raw vision output (original-image px)
+    pixel_y: float | None = None
 
     def __post_init__(self) -> None:
         if self.footprint is None:
@@ -122,13 +131,17 @@ class LayoutObject:
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        if self.footprint is not None:
-            d["footprint"] = list(self.footprint)
+        fw, fh = self.footprint or (1, 1)
+        d["footprint"] = [fw, fh]
+        d["footprint_w"] = fw
+        d["footprint_h"] = fh
         return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "LayoutObject":
         fp = d.get("footprint")
+        if not fp and d.get("footprint_w") is not None and d.get("footprint_h") is not None:
+            fp = (d["footprint_w"], d["footprint_h"])
         return cls(
             id=str(d["id"]),
             category=d["category"],
@@ -141,6 +154,8 @@ class LayoutObject:
             is_trap=bool(d.get("is_trap", False)),
             confidence=float(d.get("confidence", 1.0)),
             notes=d.get("notes"),
+            pixel_x=d.get("pixel_x"),
+            pixel_y=d.get("pixel_y"),
         )
 
 

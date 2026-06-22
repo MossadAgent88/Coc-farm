@@ -36,16 +36,19 @@ from src.copy.grid import Grid, GridRegistrationError
 from src.copy.schema import (
     CONFIDENCE_FLOOR,
     KNOWN_TYPES,
+    MAX_TILE,
     GridInfo,
     Layout,
     LayoutObject,
     SourceInfo,
     WallChain,
+    default_footprint,
 )
 from src.copy.validate import validate_layout
 from src.copy.vision import VisionResult, VisionTransport, detect_objects
 
 MAX_RETRIES = 2  # so up to 3 vision calls total
+MAX_SKIP_RATIO = 0.10  # fail if >10% of buildings can't be placed
 
 
 class DetectionError(RuntimeError):
@@ -236,55 +239,118 @@ def _load_image(path: str) -> tuple[np.ndarray, bytes]:
     return img, raw
 
 
+def _clamp_anchor(anchor: int, footprint: int) -> int:
+    """Clamp a footprint anchor so the whole footprint stays within 0..MAX_TILE."""
+    return min(max(anchor, 0), MAX_TILE - footprint + 1)
+
+
+# Placement nudges: original spot first, then up to 3 single-tile shifts. If all
+# four collide, the building is skipped (robust to vision's imperfect centers).
+_NUDGES = ((0, 0), (1, 0), (-1, 0), (0, 1))
+
+
 def _assemble(
     vres: VisionResult, grid: Grid
-) -> tuple[list[LayoutObject], list[WallPiece], list[str]]:
-    """Register raw detections to tiles. Returns (objects, wall_pieces, warnings)."""
+) -> tuple[list[LayoutObject], list[WallPiece], list[str], int, int]:
+    """Register raw detections to tiles with footprint-aware placement.
+
+    Vision gives PIXEL centers only. Here we: convert center pixel -> center tile
+    via the grid, look up the type's footprint, CENTER that footprint on the
+    center tile, clamp it in-bounds, and resolve overlaps by nudging up to 3
+    tiles or (failing that) skipping the building. Walls that land on a building
+    tile are skipped. Returns (objects, wall_pieces, warnings, skipped, total).
+    """
     warnings: list[str] = []
     objects: list[LayoutObject] = []
     wall_pieces: list[WallPiece] = []
+    occupied: dict[tuple[int, int], str] = {}
 
-    # Sort deterministically so ids are stable for identical model output.
+    # Sort deterministically so ids/placement are stable for identical output.
     ordered = sorted(
         vres.detections,
         key=lambda d: (float(d.get("py", 0)), float(d.get("px", 0)), str(d["type"])),
     )
+    buildings = [d for d in ordered if str(d["type"]) != "wall"]
+    walls = [d for d in ordered if str(d["type"]) == "wall"]
 
     obj_index = 0
-    for det in ordered:
+    skipped = 0
+    for det in buildings:
         type_key = str(det["type"])
-        tx, ty = grid.pixel_to_tile(float(det["px"]), float(det["py"]))
+        px, py = float(det["px"]), float(det["py"])
         conf = float(det.get("confidence", 1.0))
         level = det.get("level")
         level = None if level is None else int(level)
 
-        if type_key == "wall":
-            wall_pieces.append(WallPiece((tx, ty), level=level, confidence=conf))
+        cx, cy = grid.pixel_to_tile(px, py)  # center tile (already clamped 0..43)
+        fw, fh = default_footprint(type_key)
+        # center the footprint on the center tile, then clamp in-bounds
+        ax = _clamp_anchor(cx - (fw - 1) // 2, fw)
+        ay = _clamp_anchor(cy - (fh - 1) // 2, fh)
+
+        placed: tuple[int, int, list[tuple[int, int]]] | None = None
+        for dx, dy in _NUDGES:
+            nx = _clamp_anchor(ax + dx, fw)
+            ny = _clamp_anchor(ay + dy, fh)
+            tiles = [(nx + i, ny + j) for i in range(fw) for j in range(fh)]
+            if all(t not in occupied for t in tiles):
+                placed = (nx, ny, tiles)
+                break
+
+        if placed is None:
+            skipped += 1
+            warnings.append(
+                f"skipped {type_key} at px({px:.0f},{py:.0f}) ~tile({cx},{cy}): "
+                f"no collision-free {fw}x{fh} placement after nudging"
+            )
             continue
 
-        if type_key not in KNOWN_TYPES:
+        nx, ny, tiles = placed
+        oid = f"obj_{obj_index:04d}"
+        for t in tiles:
+            occupied[t] = oid
+        if (nx, ny) != (cx - (fw - 1) // 2, cy - (fh - 1) // 2):
             warnings.append(
-                f"unknown type {type_key!r} kept as-is at tile ({tx},{ty})"
+                f"{oid} ({type_key}) adjusted to ({nx},{ny}) to avoid overlap/bounds"
             )
+        if type_key not in KNOWN_TYPES:
+            warnings.append(f"unknown type {type_key!r} kept as-is at ({nx},{ny})")
 
         obj = LayoutObject(
-            id=f"obj_{obj_index:04d}",
+            id=oid,
             category=det.get("category", "decoration"),
             type=type_key,
-            tile_x=tx,
-            tile_y=ty,
+            tile_x=nx,
+            tile_y=ny,
             rotation=int(det.get("rotation", 0)),
             level=level,
+            footprint=(fw, fh),
             confidence=conf,
+            pixel_x=px,
+            pixel_y=py,
         )
         if conf < CONFIDENCE_FLOOR:
             warnings.append(
-                f"{obj.id} ({type_key}) low confidence {conf:.2f} at ({tx},{ty})"
+                f"{oid} ({type_key}) low confidence {conf:.2f} at ({nx},{ny})"
             )
         objects.append(obj)
         obj_index += 1
 
-    return objects, wall_pieces, warnings
+    # Walls are 1x1; drop any that land on a building tile (don't fail the run).
+    for det in walls:
+        px, py = float(det["px"]), float(det["py"])
+        conf = float(det.get("confidence", 1.0))
+        level = det.get("level")
+        level = None if level is None else int(level)
+        tx, ty = grid.pixel_to_tile(px, py)
+        if (tx, ty) in occupied:
+            warnings.append(
+                f"skipped wall piece at ({tx},{ty}); collides with {occupied[(tx, ty)]}"
+            )
+            continue
+        wall_pieces.append(WallPiece((tx, ty), level=level, confidence=conf))
+
+    return objects, wall_pieces, warnings, skipped, len(buildings)
 
 
 def detect(
@@ -331,7 +397,9 @@ def detect(
 
     for attempt in range(MAX_RETRIES + 1):
         vres = detect_objects(image, transport=transport)
-        objects, wall_pieces, warnings = _assemble(vres, grid)
+        objects, wall_pieces, warnings, skipped, total_buildings = _assemble(
+            vres, grid
+        )
         chains = build_wall_chains(wall_pieces)
 
         layout = Layout(
@@ -352,18 +420,32 @@ def detect(
                 "normal view -- supply a layout-edit screenshot to capture traps"
             )
 
+        skip_ratio = (skipped / total_buildings) if total_buildings else 0.0
+        if skipped:
+            layout.warnings.append(
+                f"placement: skipped {skipped}/{total_buildings} buildings "
+                f"({skip_ratio:.0%}) with unresolvable collisions"
+            )
+
         result = validate_layout(layout)
         layout.warnings.extend(result.warnings)
         has_low_conf = layout.low_confidence_count() > 0
+        too_many_skipped = skip_ratio > MAX_SKIP_RATIO
 
-        if result.ok and not has_low_conf:
+        if result.ok and not has_low_conf and not too_many_skipped:
             logger.info(
                 f"detect: valid layout on attempt {attempt + 1} ({layout.stats()})"
             )
             return layout
 
-        last_layout, last_errors = layout, result.errors
-        reason = "; ".join(result.errors) if result.errors else "low-confidence items"
+        errors = list(result.errors)
+        if too_many_skipped:
+            errors.append(
+                f"too many buildings skipped: {skipped}/{total_buildings} "
+                f"({skip_ratio:.0%}) > {MAX_SKIP_RATIO:.0%}"
+            )
+        last_layout, last_errors = layout, errors
+        reason = "; ".join(errors) if errors else "low-confidence items"
         if attempt < MAX_RETRIES:
             logger.warning(
                 f"detect: attempt {attempt + 1} rejected ({reason}); re-running vision"
