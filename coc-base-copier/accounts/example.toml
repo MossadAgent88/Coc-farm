@@ -1,0 +1,13 @@
+# Base Copier account config.
+#
+# Copy this file to accounts/<name>.toml and edit the values for each
+# emulator/account you run. Then select one with:
+#   python -m src.paste --account main village.json
+#
+# `--account main` overrides `--device` and loads adb_serial from here.
+
+[account.example]
+name = "main"
+adb_serial = "emulator-5554"
+th_level = 14
+layout_dir = "layouts/main"

@@ -11,6 +11,7 @@ from pathlib import Path
 from loguru import logger
 
 from src.copy.detect import DetectionError
+from src.paste.accounts import AccountError, load_account
 from src.paste.layout import LayoutContractError
 from src.paste.layout import load_layout
 from src.paste.place import build_plan, format_plan, paste_layout
@@ -25,7 +26,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Print placement plan without ADB")
     parser.add_argument("--roundtrip", action="store_true", help="Run detector diff after pasting")
     parser.add_argument("--device", help="ADB device serial to use")
+    parser.add_argument(
+        "--account",
+        help=(
+            "Account name from accounts/<name>.toml. Overrides --device with "
+            "the account's adb_serial."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    # --account overrides --device (loads adb_serial from the account config).
+    device_serial: str | None = args.device
+    if args.account:
+        try:
+            account = load_account(args.account)
+        except AccountError as exc:
+            print(f"Could not load account: {exc}")
+            return 1
+        device_serial = account.adb_serial
+        logger.info(f"Using account {account.name!r}: device={account.adb_serial}")
 
     layout_path = args.layout
     if not _validate_input_file(layout_path):
@@ -56,14 +75,14 @@ def main(argv: list[str] | None = None) -> int:
                 if not _validate_input_file(layout_path):
                     return 1
                 print("Step 2/2: Pasting...")
-            if args.device:
-                _configure_device(args.device)
+            if device_serial:
+                _configure_device(device_serial)
             report = roundtrip(layout_path)
             print(f"Round-trip match: {report.match_percentage:.2f}%")
             return 0
 
-        if args.device:
-            _configure_device(args.device)
+        if device_serial:
+            _configure_device(device_serial)
         summary = paste_layout(layout_path, resume=resume)
         print(
             f"Paste complete: placed={summary.placed} "
