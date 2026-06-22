@@ -197,7 +197,6 @@ class AnthropicTransport:
             return client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                temperature=0,  # deterministic - required for idempotency
                 system=system,
                 messages=[
                     {
