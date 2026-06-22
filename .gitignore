@@ -1,21 +1,28 @@
 # Python
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.mypy_cache/
+**/.pytest_cache/
+**/.mypy_cache/
 .ruff_cache/
 
 # Virtual environments
-.venv/
+**/.venv/
 .venv-build/
-venv/
+**/venv/
 env/
 
+# Node / web build
+**/node_modules/
+**/.next/
+
 # Build output
-build/
-dist/
+**/build/
+**/dist/
 *.spec.bak
+
+# Coverage
+**/coverage/
 
 # Local runtime files
 settings.json
@@ -31,12 +38,29 @@ release/
 *.zip
 *.sha256
 
+# Binary / large artifacts (already-tracked files remain tracked)
+*.exe
+*.dll
+*.pyd
+*.sqlite
+*.db
+*.mp4
+
+# Image artifacts — debug screenshots etc.
+# (NOTE: PNG/JPG already tracked under templates/ & root stay tracked;
+#  this only blocks NEW untracked images. Use `git add -f` to force.)
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Secrets / env
+.env
+.env.*
+*.local
+
 # Editor / OS noise
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
-
-# Personal emulator path notes
-*.local
-*.env
