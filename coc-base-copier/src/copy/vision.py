@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -52,13 +53,115 @@ class VisionTransport(Protocol):
     def complete(self, *, image_png: bytes, prompt: str, system: str) -> str: ...
 
 
+# --- transport hardening knobs ---
+_MAX_IMAGE_LONG_SIDE = 1568   # Anthropic's recommended max long side for vision
+_MAX_ATTEMPTS = 3             # total tries
+_BASE_DELAY_S = 1.0           # backoff: 1s, 2s, (4s) ...
+_CLIENT_TIMEOUT_S = 60.0      # explicit client-side timeout
+
+
+def _resize_for_vision(
+    image: np.ndarray, max_side: int = _MAX_IMAGE_LONG_SIDE
+) -> tuple[np.ndarray, float]:
+    """Downscale so the long side <= max_side. Returns (image, scale_back).
+
+    ``scale_back`` maps a coordinate in the *resized* image back to the
+    *original* image (1.0 when no resize happened). Sending a smaller image
+    avoids the large-base64 timeouts seen from sandboxed envs; the caller
+    rescales the model's pixel coords back so the JSON contract (px/py in
+    original-image space) is preserved.
+    """
+    h, w = image.shape[:2]
+    long_side = max(h, w)
+    if long_side <= max_side:
+        return image, 1.0
+    factor = max_side / float(long_side)
+    new_w = max(1, int(round(w * factor)))
+    new_h = max(1, int(round(h * factor)))
+    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return resized, float(w) / float(new_w)
+
+
+def _rescale_detection_coords(text: str, scale: float) -> str:
+    """Multiply every detection px/py by ``scale`` (resized -> original space).
+
+    Operates on the model's JSON text and preserves all other keys. No-op when
+    scale == 1.0 or the text is not parseable (left for detect_objects to
+    surface strictly).
+    """
+    if scale == 1.0:
+        return text
+    try:
+        data = json.loads(_strip_json(text))
+    except Exception:
+        return text
+    for det in data.get("detections", []) or []:
+        if isinstance(det, dict):
+            if det.get("px") is not None:
+                det["px"] = float(det["px"]) * scale
+            if det.get("py") is not None:
+                det["py"] = float(det["py"]) * scale
+    return json.dumps(data)
+
+
+def _retryable_exceptions() -> tuple[type[BaseException], ...]:
+    """Connection/timeout errors worth retrying. Auth errors are NOT included."""
+    errs: tuple[type[BaseException], ...] = (TimeoutError, ConnectionError)
+    try:
+        import anthropic  # noqa: PLC0415
+
+        errs = (anthropic.APIConnectionError, anthropic.APITimeoutError) + errs
+    except Exception:  # pragma: no cover - anthropic optional
+        pass
+    return errs
+
+
+def _call_with_retries(
+    fn,
+    *,
+    retryable: tuple[type[BaseException], ...],
+    attempts: int = _MAX_ATTEMPTS,
+    base_delay: float = _BASE_DELAY_S,
+    sleep=time.sleep,
+):
+    """Call ``fn`` with exponential backoff on ``retryable`` errors only.
+
+    Waits base_delay * 2**i before retry i (1s, 2s, ...). Non-retryable
+    exceptions (e.g. authentication) propagate immediately without retry. After
+    the final attempt the last retryable exception is re-raised.
+    """
+    last: BaseException | None = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except retryable as exc:  # type: ignore[misc]
+            last = exc
+            logger.warning(
+                f"vision call failed (attempt {i + 1}/{attempts}): "
+                f"{exc.__class__.__name__}: {exc}"
+            )
+            if i < attempts - 1:
+                sleep(base_delay * (2 ** i))
+    assert last is not None
+    raise last
+
+
 @dataclass
 class AnthropicTransport:
-    """Production transport using the Anthropic Python SDK (lazy import)."""
+    """Production transport using the Anthropic Python SDK (lazy import).
+
+    Hardened for flaky/sandboxed connectivity: downscales the image to
+    Anthropic's recommended max long side, sets an explicit client-side
+    timeout, and retries connection/timeout errors with exponential backoff.
+    Auth errors are NOT retried. On final failure it raises DetectionError --
+    it never silently returns empty. Signature and JSON contract are unchanged.
+    """
 
     model: str = DEFAULT_MODEL
     max_tokens: int = MAX_TOKENS
     api_key: str | None = None  # falls back to ANTHROPIC_API_KEY env var
+    timeout_s: float = _CLIENT_TIMEOUT_S
+    _sleep: Any = time.sleep  # injectable for tests
 
     def complete(self, *, image_png: bytes, prompt: str, system: str) -> str:
         try:
@@ -70,38 +173,69 @@ class AnthropicTransport:
                 "VisionTransport for offline use."
             ) from exc
 
+        # Decode the full-res PNG, downscale for the API, remember the scale so
+        # the model's coords can be mapped back to original-image space.
+        arr = cv2.imdecode(np.frombuffer(image_png, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if arr is None:
+            send_bytes, scale = image_png, 1.0
+        else:
+            resized, scale = _resize_for_vision(arr)
+            ok, buf = cv2.imencode(".png", resized)
+            if ok:
+                send_bytes = buf.tobytes()
+            else:
+                send_bytes, scale = image_png, 1.0
+        b64 = base64.standard_b64encode(send_bytes).decode("ascii")
+
         client = (
-            anthropic.Anthropic(api_key=self.api_key)
+            anthropic.Anthropic(api_key=self.api_key, timeout=self.timeout_s)
             if self.api_key
-            else anthropic.Anthropic()
+            else anthropic.Anthropic(timeout=self.timeout_s)
         )
-        b64 = base64.standard_b64encode(image_png).decode("ascii")
-        msg = client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            temperature=0,  # deterministic — required for idempotency
-            system=system,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": b64,
+
+        def _do():
+            return client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                temperature=0,  # deterministic - required for idempotency
+                system=system,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": b64,
+                                },
                             },
-                        },
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
-        )
-        # Concatenate text blocks (vision replies are a single text block).
-        return "".join(
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+            )
+
+        try:
+            msg = _call_with_retries(
+                _do, retryable=_retryable_exceptions(), sleep=self._sleep
+            )
+        except Exception as exc:  # final failure -> explicit, never silent
+            from src.copy.detect import DetectionError  # lazy: avoid circular import
+            from src.copy.schema import Layout
+
+            raise DetectionError(
+                f"vision API call failed after retries: "
+                f"{exc.__class__.__name__}: {exc}",
+                layout=Layout(),
+                errors=[f"vision_transport: {exc!r}"],
+            ) from exc
+
+        text = "".join(
             block.text for block in msg.content if getattr(block, "type", "") == "text"
         )
+        return _rescale_detection_coords(text, scale)
 
 
 SYSTEM_PROMPT = (
