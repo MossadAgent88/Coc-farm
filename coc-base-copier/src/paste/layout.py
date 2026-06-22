@@ -193,7 +193,8 @@ def _to_paste_object(item: Any) -> PasteObject | None:
 
     raw_type = _read_str(item, "type", "kind", "object_type", "building_type")
     name = _read_str(item, "name", "id", "building", "object_id") or raw_type
-    object_type = _slug(raw_type or name)
+    # raw_type/name can both be None; coalesce to "" so _slug gets a str.
+    object_type = _slug(raw_type or name or "")
     category = _category_for(item, object_type, name)
     return PasteObject(
         tile_x=tx,

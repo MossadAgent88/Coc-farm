@@ -120,3 +120,41 @@ Tests: `pytest tests --ignore=tests/test_paste_cli.py` -> **50 passed**.
    `python -m src.copy samples/test_village.png` could not be executed. Prior
    live attempts (above) hit transient `APIConnectionError`; the transport now
    retries those, but a real run still needs the user's key + network.
+
+> **UPDATE:** The `cli.py` SyntaxError blocker (#1 above) was fixed in commit
+> `cbefd19`. `tests/test_paste_cli.py` now collects and passes. Blocker #2
+> (live detector run) still needs the user's API key + network and is not
+> verifiable in CI.
+
+## Pyright type-check findings (cleanup task, 2026-06-22)
+
+Ran `pyright` with `pyrightconfig.json` (`include: ["src"]`, strict off,
+`reportMissingImports: true`). **Baseline: 20 errors.** After fixing the one
+in-scope file (`src/paste/layout.py:196`), **19 errors remain — all in
+out-of-scope files owned by Claude/Codex.** These are logged here per the
+stop-conditions; they were NOT fixed.
+
+Fixed (in-scope):
+- `src/paste/layout.py:196` — `_slug(raw_type or name)` could pass `None`.
+  Coalesced to `_slug(raw_type or name or "")`.
+
+Remaining (for Claude/Codex — do NOT fix from cleanup task):
+
+- `src/copy/detect.py:484:10` — `Import "cocbot.io" could not be resolved`.
+  The base-copier is a namespaced sub-project; `cocbot` is the sibling bot
+  package and is not on the path inside `coc-base-copier/`. This is a known
+  cross-project dependency; either add `cocbot` to the base-copier install
+  or guard the import. (Claude / detector owner.)
+- `src/copy/vision.py:275:19` — `Cannot access attribute "text"` for ~11
+  Anthropic SDK union members (`ThinkingBlock`, `ToolUseBlock`, etc.). The
+  code iterates `response.content` and reads `.text`; needs a
+  `getattr(block, "text", None)` or `isinstance` guard. (Claude / detector
+  owner.)
+- `src/paste/editor.py:21-23` — `cocbot.io` / `cocbot.vision` import not
+  resolved (same cross-project issue as detect.py). (Codex / paster owner.)
+- `src/paste/editor.py:333-335` — `Index 0 is out of range for type tuple[()]`
+  on a cv2 `findContours` return shape. Needs typing fix or assertion.
+  (Codex / paster owner.)
+- `src/paste/roundtrip.py:65:30` — `Cannot access attribute
+  "detect_from_device" for class "object"`. The injected detector object
+  needs a Protocol/ABC type instead of `object`. (Codex / paster owner.)
