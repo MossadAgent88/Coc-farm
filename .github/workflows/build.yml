@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v1.5.3"
+        description: "Release tag, for example v1.5.7"
         required: false
-        default: "v1.5.3"
+        default: "v1.5.7"
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Install dependencies
         shell: pwsh
@@ -49,7 +49,7 @@ jobs:
           } elseif ("${{ inputs.tag }}") {
             $tag = "${{ inputs.tag }}"
           } else {
-            $tag = "v1.5.3"
+            $tag = "v1.5.7"
           }
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
           $version = $tag.TrimStart("v")
@@ -59,11 +59,11 @@ jobs:
       - name: Build Windows app and release ZIP
         shell: pwsh
         run: |
-          .\scripts\package_windows_release.ps1 -Build -Version "${{ steps.release_tag.outputs.version }}" -OutputDir "release"
-          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip")) {
+          .\scripts\build_windows_release.ps1 -Version "${{ steps.release_tag.outputs.version }}"
+          if (!(Test-Path "dist\CoC-Farm-Bot-Windows.zip")) {
             throw "Missing release ZIP"
           }
-          if (!(Test-Path "release\CoC-Farm-Bot-Windows.zip.sha256")) {
+          if (!(Test-Path "dist\CoC-Farm-Bot-Windows.zip.sha256")) {
             throw "Missing checksum"
           }
 
@@ -75,7 +75,7 @@ jobs:
           generate_release_notes: true
           make_latest: true
           files: |
-            release/CoC-Farm-Bot-Windows.zip
-            release/CoC-Farm-Bot-Windows.zip.sha256
+            dist/CoC-Farm-Bot-Windows.zip
+            dist/CoC-Farm-Bot-Windows.zip.sha256
           draft: false
           prerelease: false

@@ -13,7 +13,11 @@ from PyInstaller.utils.hooks import (
 # Bundle the whole templates/ folder (images the bot matches against) at the
 # root of the unpacked exe, where vision.py and gui.py look for it via _MEIPASS.
 datas = [("templates", "templates")]
-datas += [("web_gui", "web_gui")]
+datas += [
+    ("web_gui/CoC Farm Bot.dc.html", "web_gui"),
+    ("web_gui/support.js", "web_gui"),
+    ("web_gui/Toggle.dc.html", "web_gui"),
+]
 # customtkinter ships theme/asset files it loads at runtime.
 datas += collect_data_files("customtkinter")
 # The GUI renders the uploaded HTML through PySide6 QtWebEngine. Bundle Qt's

@@ -194,32 +194,32 @@ These steps are only for developers who want to build from source.
 
 Requirements:
 
-- Python 3.12 or compatible Python 3.x
+- Python 3.14 x64
 - Git
 - Windows
 
-Build:
+Build the normal-user Windows ZIP:
 
 ```powershell
-py -3.12 -m venv .venv-build
-.\.venv-build\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
-.\.venv-build\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv-build\Scripts\python.exe -m pip install -r requirements-build.txt
-.\.venv-build\Scripts\python.exe -c "from PySide6.QtWebEngineWidgets import QWebEngineView; print('PySide6 QtWebEngine import OK')"
-.\.venv-build\Scripts\python.exe -m PyInstaller --noconfirm --clean CoCBot.spec
+.\scripts\build_windows_release.ps1 -Version 1.5.7
 ```
 
-The built app is created at:
+The release ZIP is created at:
 
 ```text
-dist\Coc-farm\Coc-farm.exe
+dist\CoC-Farm-Bot-Windows.zip
 ```
 
-To create a clean release ZIP locally:
+Before uploading a release asset, verify it from a clean extracted folder:
 
 ```powershell
-.\scripts\package_windows_release.ps1 -Build
+.\scripts\verify_windows_release.ps1
 ```
+
+The verification step extracts to `C:\CoCFarmBotFinalVerify`, checks the bundled
+runtime files, starts `CoC Farm Bot.exe` without Python on `PATH`, confirms the
+GUI window exists, then closes the app. It does not run live Clash of Clans
+actions.
 
 ## GitHub Release Process
 
