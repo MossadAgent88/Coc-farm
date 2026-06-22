@@ -1,0 +1,17 @@
+# Coc-farm Base Copier — runtime + dev dependencies.
+#
+# Verified against actual imports in src/:
+#   anthropic  -> src/copy/vision.py (lazy; only needed for live detection)
+#   opencv-python (cv2) + numpy -> src/copy/{detect,grid,vision}.py,
+#                                  src/paste/editor.py
+#   loguru     -> src/paste/{cli,editor,layout,place,roundtrip,state}.py
+#
+# No pydantic is used — the schema (src/copy/schema.py) is plain dataclasses.
+
+anthropic>=0.40,<1.0
+opencv-python>=4.13
+numpy>=2.4
+loguru
+
+# ---- dev ----
+pytest
