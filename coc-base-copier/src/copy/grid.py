@@ -19,7 +19,9 @@ tile index is ``floor`` of that, clamped to 0..GRID_SIZE-1.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -32,6 +34,9 @@ except Exception:  # pragma: no cover - logging is non-essential
     logger = logging.getLogger("coc.copy.grid")
 
 from src.copy.schema import GRID_SIZE, MAX_TILE
+
+# Where corner-detection debug artifacts are written (override for tests).
+_DEBUG_DIR = Path(os.environ.get("COC_GRID_DEBUG_DIR", "/tmp"))
 
 
 class GridRegistrationError(RuntimeError):
@@ -96,46 +101,160 @@ def _order_quad_corners(pts: np.ndarray) -> MapCorners:
     )
 
 
-def detect_map_corners(image: np.ndarray) -> MapCorners:
-    """Detect the diamond border corners via the largest 4-point contour.
+def _log_brightness(gray: np.ndarray) -> None:
+    logger.debug(
+        f"grid: brightness mean={float(gray.mean()):.1f} std={float(gray.std()):.1f} "
+        f"(very low std => preprocessing may be washing the image out)"
+    )
 
-    The CoC playable area is bounded by a bright grid/border. We threshold the
-    bright pixels, find the largest contour, approximate it to a quadrilateral,
-    and label the vertices. Raises GridRegistrationError if no usable quad is
-    found.
+
+def _auto_canny(gray: np.ndarray) -> np.ndarray:
+    """Canny with thresholds auto-derived from Otsu -- no per-theme tuning."""
+    high, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    high = max(1.0, float(high))
+    return cv2.Canny(gray, int(0.5 * high), int(high))
+
+
+def _candidate_masks(gray: np.ndarray) -> dict[str, np.ndarray]:
+    """Brightness-only binarizations. Color is never used, so green grass, winter
+    ice, and desert sand all reduce to the same 'bright field vs dark surround'
+    problem. We try both Otsu polarities (diamond may be brighter OR darker than
+    its surround) and an adaptive threshold for uneven lighting."""
+    masks: dict[str, np.ndarray] = {}
+    _t, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    masks["otsu"] = otsu
+    masks["otsu_inv"] = cv2.bitwise_not(otsu)
+    masks["adaptive"] = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, -5
+    )
+    return masks
+
+
+def _contour_corner_candidates(
+    mask: np.ndarray, frame_area: float
+) -> list[MapCorners]:
+    """Axis-extreme corners for every sufficiently large contour in a mask."""
+    out: list[MapCorners] = []
+    contours, _ = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    for c in contours:
+        if cv2.contourArea(c) < 0.05 * frame_area:
+            continue
+        hull = cv2.convexHull(c).reshape(-1, 2).astype(np.float32)
+        if len(hull) >= 4:
+            out.append(_order_quad_corners(hull))
+    return out
+
+
+def _hough_corner_candidates(
+    edges: np.ndarray, shape: tuple[int, ...]
+) -> list[MapCorners]:
+    """Fallback: hull of Hough segments whose slope matches an isometric edge.
+
+    The diamond's four edges have slope ~ +/-0.5 (2:1 iso projection). Keeping
+    only those segments rejects horizontal UI bars; the convex hull of their
+    endpoints brackets the diamond. Always scored by ``corner_confidence`` so a
+    bad hull simply loses to a better candidate.
+    """
+    h, w = shape[:2]
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 180.0, threshold=60,
+        minLineLength=int(0.12 * max(h, w)), maxLineGap=40,
+    )
+    if lines is None:
+        logger.debug("grid: HoughLinesP found no segments")
+        return []
+    logger.debug(f"grid: HoughLinesP found {len(lines)} segments")
+    pts: list[tuple[float, float]] = []
+    for x1, y1, x2, y2 in lines[:, 0, :]:
+        if x2 == x1:
+            continue
+        slope = (y2 - y1) / float(x2 - x1)
+        if 0.2 <= abs(slope) <= 1.6:
+            pts.extend([(float(x1), float(y1)), (float(x2), float(y2))])
+    if len(pts) < 4:
+        return []
+    hull = cv2.convexHull(np.array(pts, dtype=np.float32)).reshape(-1, 2)
+    return [_order_quad_corners(hull)]
+
+
+def _save_grid_debug(
+    gray: np.ndarray, edges: np.ndarray, image: np.ndarray, corners: MapCorners
+) -> None:
+    """Write preprocessed + annotated images so a failure is diagnosable."""
+    try:
+        _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(_DEBUG_DIR / "grid_debug_preprocessed.png"), edges)
+        cv2.imwrite(str(_DEBUG_DIR / "grid_debug_gray.png"), gray)
+        annotated = image.copy()
+        pts = corners.as_array().astype(int)
+        cv2.polylines(annotated, [pts.reshape(-1, 1, 2)], True, (0, 0, 255), 3)
+        for (x, y), name in zip(pts, ("top", "right", "bottom", "left")):
+            cv2.circle(annotated, (int(x), int(y)), 10, (0, 255, 0), -1)
+            cv2.putText(
+                annotated, name, (int(x) + 10, int(y)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2,
+            )
+        cv2.imwrite(str(_DEBUG_DIR / "grid_debug_annotated.png"), annotated)
+        logger.debug(f"grid: wrote debug images to {_DEBUG_DIR}")
+    except Exception as exc:  # pragma: no cover - debug only
+        logger.debug(f"grid: failed to write debug images: {exc}")
+
+
+def detect_map_corners(image: np.ndarray) -> MapCorners:
+    """Detect the village diamond corners using brightness contrast only.
+
+    Theme-agnostic by design: the diamond reads as a bright field/line over a
+    darker surround whatever the grass color (default green, winter ice, desert
+    sand). We binarize by luminance several ways, take axis-extreme corners for
+    every large contour, add a Hough-based fallback, then keep the candidate
+    that scores best under :func:`corner_confidence`. Debug artifacts are written
+    to ``$COC_GRID_DEBUG_DIR`` (default /tmp) when ``COC_GRID_DEBUG`` is set or
+    the best candidate is below the trust threshold, so a failing real-world
+    screenshot always leaves a trail (preprocessed + annotated images).
     """
     if image is None or image.ndim != 3:
         raise GridRegistrationError("image must be an HxWx3 BGR array")
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # The border is the brightest large structure. Otsu adapts to brightness.
-    _thr, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Close small gaps so the border reads as one contour.
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    _log_brightness(gray)
+    frame_area = float(gray.shape[0] * gray.shape[1])
+    edges = _auto_canny(gray)
 
-    contours, _ = cv2.findContours(
-        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-    if not contours:
-        raise GridRegistrationError("no contours found for map border")
+    candidates: list[tuple[float, str, MapCorners]] = []
+    for name, mask in _candidate_masks(gray).items():
+        for corners in _contour_corner_candidates(mask, frame_area):
+            conf = corner_confidence(image, corners)
+            candidates.append((conf, name, corners))
+            logger.debug(
+                f"grid candidate [{name}] confidence={conf:.3f} {corners.to_dict()}"
+            )
+    for corners in _hough_corner_candidates(edges, image.shape):
+        conf = corner_confidence(image, corners)
+        candidates.append((conf, "hough", corners))
+        logger.debug(
+            f"grid candidate [hough] confidence={conf:.3f} {corners.to_dict()}"
+        )
 
-    largest = max(contours, key=cv2.contourArea)
-    peri = cv2.arcLength(largest, True)
-    quad: np.ndarray | None = None
-    for eps in (0.02, 0.03, 0.05, 0.08):
-        approx = cv2.approxPolyDP(largest, eps * peri, True)
-        if len(approx) == 4:
-            quad = approx
-            break
-    if quad is None:
-        # Fall back to the minimum-area rotated rect (always 4 pts).
-        box = cv2.boxPoints(cv2.minAreaRect(largest))
-        quad = box.astype(np.int32)
-        logger.debug("corner detection fell back to minAreaRect")
+    debug_on = bool(os.environ.get("COC_GRID_DEBUG"))
+    if not candidates:
+        if debug_on:
+            try:
+                _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(_DEBUG_DIR / "grid_debug_preprocessed.png"), edges)
+            except Exception:  # pragma: no cover
+                pass
+        raise GridRegistrationError("no diamond-like contour found in any mask")
 
-    corners = _order_quad_corners(np.asarray(quad, dtype=np.float32))
-    logger.debug(f"detected map corners: {corners.to_dict()}")
+    candidates.sort(key=lambda t: t[0], reverse=True)
+    best_conf, best_name, corners = candidates[0]
+    logger.debug(f"grid: best candidate [{best_name}] confidence={best_conf:.3f}")
+
+    if debug_on or best_conf < 0.70:
+        _save_grid_debug(gray, edges, image, corners)
+
     return corners
 
 
