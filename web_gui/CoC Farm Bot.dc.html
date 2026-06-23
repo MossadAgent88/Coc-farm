@@ -561,6 +561,48 @@
       </div>
       </sc-if>
 
+      <!-- ===================== BASE COPIER ===================== -->
+      <sc-if value="{{ isCopier }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:13px;">
+        <div style="display:flex;align-items:center;gap:11px;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:13px;padding:11px 15px;">
+          <svg class="ico" viewBox="0 0 24 24" style="color:var(--amber);"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <span style="font-size:12.5px;color:var(--txt2);"><strong style="color:var(--amber);">Base Copier is BETA.</strong> Dry-run is safe and never clicks the emulator. Live paste is disabled. Full TH18 paste needs horizontal shop scrolling.</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;align-items:start;">
+          <!-- Dry Run -->
+          <div class="card" style="display:flex;flex-direction:column;gap:13px;">
+            <div style="display:flex;align-items:center;gap:11px;">
+              <div style="width:38px;height:38px;flex:none;border-radius:11px;background:rgba(61,123,255,.12);border:1px solid rgba(61,123,255,.28);display:flex;align-items:center;justify-content:center;color:var(--blue-l);"><svg class="ico" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+              <div><div style="font-size:14px;font-weight:800;">Dry Run Sample Plan</div><div style="font-size:11.5px;color:var(--txt3);">Plan only — no emulator clicking</div></div>
+            </div>
+            <p style="font-size:12.5px;color:var(--txt2);line-height:1.5;margin:0;">Runs the base-copier planner on the sample layout and prints where each building would go. Safe to run anytime — it never touches LDPlayer.</p>
+            <button class="{{ copierDryCls }}" onClick="{{ onCopierDryRun }}"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>{{ copierDryLabel }}</button>
+          </div>
+
+          <!-- Live paste (DISABLED) -->
+          <div class="card" style="display:flex;flex-direction:column;gap:13px;opacity:.7;">
+            <div style="display:flex;align-items:center;gap:11px;">
+              <div style="width:38px;height:38px;flex:none;border-radius:11px;background:rgba(239,71,87,.1);border:1px solid rgba(239,71,87,.25);display:flex;align-items:center;justify-content:center;color:var(--red-l);"><svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></div>
+              <div><div style="font-size:14px;font-weight:800;">Live Paste</div><div style="font-size:11.5px;color:var(--txt3);">Disabled</div></div>
+            </div>
+            <p style="font-size:12.5px;color:var(--txt2);line-height:1.5;margin:0;">Live paste is disabled from the GUI until horizontal shop scrolling is implemented.</p>
+            <button class="btn btn--danger-soft btn--block is-disabled" disabled title="Disabled until horizontal shop scrolling is implemented." style="cursor:not-allowed;">Disabled until horizontal shop scrolling is implemented.</button>
+          </div>
+        </div>
+
+        <!-- Safe shortcuts -->
+        <div class="card">
+          <div class="sec-t"><div class="sec-bar" style="background:var(--txt3);"></div><span class="sec-l">SHORTCUTS</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;">
+            <button class="btn btn--ghost" onClick="{{ onCopierFolder }}">Open Base Copier Folder</button>
+            <button class="btn btn--ghost" onClick="{{ onCopierDocs }}">Open Documentation</button>
+            <button class="btn btn--ghost" onClick="{{ onCopierDryRun }}">Re-run Last Plan</button>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
     </div>
   </main>
 
@@ -644,7 +686,7 @@ class Component extends DCLogic {
     activeTab: 'settings', running: false, seconds: 0, cycle: 0,
     strategy: 'Random', side: 'Random', logFilter: 'All', logSearch: '',
     copied: false, dirty: false,
-    busy: { detect: false, attack: false },
+    busy: { detect: false, attack: false, copier: false },
     result: { text: 'No action run yet.', type: 'idle' },
     toast: null, confirm: null, modal: null, editId: null, form: {}, formError: '',
     activePreset: 'E-Drag Spam',
@@ -922,7 +964,7 @@ class Component extends DCLogic {
     const appStyle = '--blue:' + accent + ';';
     const thOptions = ['TH18','TH17','TH16','TH15','TH14','TH13','TH12','TH11','TH10','TH9'];
 
-    const tabDefs = [['Settings','settings'],['Bases','bases'],['Armies','armies'],['Log','log'],['Manual','manual']];
+    const tabDefs = [['Settings','settings'],['Bases','bases'],['Armies','armies'],['Log','log'],['Manual','manual'],['Base Copier','copier']];
     const tabs = tabDefs.map(([label,key]) => ({ label, cls: st.activeTab === key ? 'tab active' : 'tab', onClick: () => this.setState({ activeTab: key }) }));
 
     const stratNames = ['Random','Top left','Top right','Bottom right'];
@@ -980,7 +1022,7 @@ class Component extends DCLogic {
 
     return {
       tabs,
-      isSettings: st.activeTab === 'settings', isLog: st.activeTab === 'log', isManual: st.activeTab === 'manual', isBases: st.activeTab === 'bases', isArmies: st.activeTab === 'armies',
+      isSettings: st.activeTab === 'settings', isLog: st.activeTab === 'log', isManual: st.activeTab === 'manual', isBases: st.activeTab === 'bases', isArmies: st.activeTab === 'armies', isCopier: st.activeTab === 'copier',
       appStyle, accent,
       running: st.running, notRunning: !st.running,
       statusText: st.running ? 'Bot running' : 'Bot idle', statusColor: st.running ? '#3ee08f' : '#ff6b6b',
@@ -1041,7 +1083,20 @@ class Component extends DCLogic {
       modalTitle: st.modal === 'base' ? (st.editId ? 'Edit Base' : 'Add Base') : (st.editId ? 'Edit Army' : 'Add Army'),
       saveLabel: st.editId ? 'Save changes' : (st.modal === 'base' ? 'Save base' : 'Save army'),
       f: st.form, setF, formError: st.formError, toggleFormDonations: () => this.toggleFormDonations(),
-      onCloseModal: () => this.closeModal(), onSaveItem: () => this.saveItem()
+      onCloseModal: () => this.closeModal(), onSaveItem: () => this.saveItem(),
+      // base copier (safe dry-run only)
+      copierDryLabel: st.busy.copier ? 'Planning…' : 'Dry Run Sample Plan', copierDryCls: 'btn btn--blue btn--block' + (st.busy.copier ? ' loading' : ''),
+      onCopierDryRun: () => {
+        if (st.busy.copier) return;
+        this.setState(s => ({ busy: { ...s.busy, copier: true } }));
+        this.pushLog('INFO', 'Base Copier: running dry-run plan…');
+        this.callApi('copier_dry_run').then(res => {
+          this.setState(s => ({ busy: { ...s.busy, copier: false } }));
+          if (res && res.ok) { this.showToast('Dry-run plan printed to log', 'success'); }
+        });
+      },
+      onCopierFolder: () => { this.callApi('copier_open_folder'); this.showToast('Opening folder', 'info'); },
+      onCopierDocs: () => { this.callApi('copier_open_docs'); this.showToast('Opening docs', 'info'); }
     };
   }
 }

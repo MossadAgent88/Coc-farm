@@ -18,6 +18,13 @@ datas += [
     ("web_gui/support.js", "web_gui"),
     ("web_gui/Toggle.dc.html", "web_gui"),
 ]
+# Base Copier backend (pure planning half only) so the GUI's Dry Run button
+# works inside the frozen build without requiring Python on the user's machine.
+datas += [
+    ("coc-base-copier/src", "coc-base-copier/src"),
+    ("coc-base-copier/README.md", "coc-base-copier"),
+    ("coc-base-copier/docs", "coc-base-copier/docs"),
+]
 # customtkinter ships theme/asset files it loads at runtime.
 datas += collect_data_files("customtkinter")
 # The GUI renders the uploaded HTML through PySide6 QtWebEngine. Bundle Qt's

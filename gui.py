@@ -152,6 +152,78 @@ class WebApi:
         self.controller.copy_link(link)
         return {"ok": True}
 
+    # ---- Base Copier (safe dry-run only — never live) ----
+
+    def copier_dry_run(self) -> dict[str, Any]:
+        """Run the base-copier planner on the sample layout (no ADB, no --live)."""
+        from cocbot.base_copier_bridge import dry_run_sample
+
+        result = dry_run_sample()
+        if not result.get("ok"):
+            msg = result.get("error", "dry-run failed")
+            self.controller.emit("log", text=f"Base Copier: {msg}", level="error")
+            return result
+        if result.get("stale"):
+            self.controller.emit(
+                "log",
+                text=(
+                    "Base Copier: using a synthetic sample layout (no real "
+                    "detector output found). Run the detector first for a real plan."
+                ),
+                level="warning",
+            )
+        plan = result.get("plan", "")
+        for line in plan.splitlines():
+            self.controller.emit("log", text=f"[copier] {line}", level="info")
+        self.controller.emit(
+            "log",
+            text=(
+                f"Base Copier dry-run complete: {result.get('action_count', 0)} "
+                "action(s) planned. No emulator was touched."
+            ),
+            level="success",
+        )
+        return result
+
+    def copier_open_folder(self) -> dict[str, Any]:
+        """Open the coc-base-copier folder in the OS file explorer."""
+        import webbrowser
+
+        from cocbot.base_copier_bridge import base_copier_root
+
+        root = base_copier_root()
+        if root is None:
+            self.controller.emit("log", text="Base Copier folder not found.", level="warning")
+            return {"ok": False, "error": "coc-base-copier folder not found"}
+        try:
+            webbrowser.open(root.as_uri())
+            self.controller.emit("log", text=f"Opened Base Copier folder: {root}", level="info")
+        except Exception as exc:
+            self.controller.emit("log", text=f"Could not open folder: {exc}", level="error")
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True}
+
+    def copier_open_docs(self) -> dict[str, Any]:
+        """Open the Base Copier README / docs."""
+        import webbrowser
+
+        from cocbot.base_copier_bridge import base_copier_root
+
+        root = base_copier_root()
+        if root is None:
+            self.controller.emit("log", text="Base Copier docs not found.", level="warning")
+            return {"ok": False, "error": "coc-base-copier folder not found"}
+        readme = root / "README.md"
+        schema = root / "docs" / "layout-schema.md"
+        target = readme if readme.exists() else schema if schema.exists() else root
+        try:
+            webbrowser.open(target.as_uri())
+            self.controller.emit("log", text=f"Opened Base Copier docs: {target.name}", level="info")
+        except Exception as exc:
+            self.controller.emit("log", text=f"Could not open docs: {exc}", level="error")
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True}
+
 
 BRIDGE_METHODS = (
     "initial_state",
@@ -167,6 +239,9 @@ BRIDGE_METHODS = (
     "save_library",
     "open_link",
     "copy_link",
+    "copier_dry_run",
+    "copier_open_folder",
+    "copier_open_docs",
 )
 
 
