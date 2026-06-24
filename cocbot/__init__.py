@@ -14,4 +14,4 @@ will correctly report "up to date" even if you uploaded a new executable.
 # PATCH = bug fix / template tweak / tuning change
 # MINOR = new feature (attack scheme, GUI control, event type)
 # MAJOR = breaking change (resolution target, settings.json schema break)
-__version__ = "1.5.7"
+__version__ = "1.5.8"

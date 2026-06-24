@@ -24,7 +24,10 @@ from src.paste.roundtrip import RoundTripFailure, roundtrip
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m src.paste")
-    parser.add_argument("layout", type=Path, help="Layout JSON exported by the detector")
+    parser.add_argument(
+        "layout", type=Path, nargs="?",
+        help="Layout JSON exported by the detector (omit when --calibrate-shop-scroll)",
+    )
     parser.add_argument("--resume", action="store_true", help="Resume from paste_state.json")
     parser.add_argument("--no-resume", action="store_true", help="Ignore paste_state.json")
     parser.add_argument("--dry-run", action="store_true", help="Print placement plan without ADB")
@@ -47,6 +50,21 @@ def main(argv: list[str] | None = None) -> int:
             "--roundtrip run as a safe dry-run and never touch the screen."
         ),
     )
+    parser.add_argument(
+        "--calibrate-shop-scroll", action="store_true",
+        help="Safely capture shop-scroll calibration (screenshot only; no placement).",
+    )
+    parser.add_argument(
+        "--slots-per-swipe", type=int,
+        help="Measured slots shifted per inventory swipe; providing it marks the "
+        "calibration verified (activates slot 9+ scrolling).",
+    )
+    parser.add_argument(
+        "--visible-slots", type=int, default=9,
+        help="Shop slots visible without scrolling (default 9).",
+    )
+    parser.add_argument("--strip", help="Measured strip bounds 'x_min,x_max,y_min,y_max'.")
+    parser.add_argument("--swipe-x", help="Measured swipe 'start_x,end_x' inside the strip.")
     args = parser.parse_args(argv)
 
     # --account overrides --device (loads adb_serial from the account config).
@@ -59,6 +77,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         device_serial = account.adb_serial
         logger.info(f"Using account {account.name!r}: device={account.adb_serial}")
+
+    if args.calibrate_shop_scroll:
+        return _run_shop_scroll_calibration(args, device_serial)
+
+    if args.layout is None:
+        print("No layout file given.")
+        print("Usage: python -m src.paste <layout.json> [--live]")
+        print("   or: python -m src.paste --calibrate-shop-scroll [--slots-per-swipe N]")
+        return 1
 
     layout_path = args.layout
     if not _validate_input_file(layout_path):
@@ -190,3 +217,94 @@ def _configure_device(device: str) -> None:
     from src.paste.editor import configure_adb_device
 
     configure_adb_device(device)
+
+
+def _run_shop_scroll_calibration(args, device_serial: str | None) -> int:
+    """Safely capture shop-scroll calibration and write it to
+    config/shop_scroll_calibration.json.
+
+    Safe: opens the editor (only the known editor-open buttons), takes ONE
+    screenshot, and writes a JSON file. No building placement, no random taps,
+    no live paste. Geometry seeds come from existing shop constants; the
+    activating value (slots-per-swipe) must be measured and passed by the user,
+    otherwise a non-activating DRAFT is written.
+    """
+    from src.paste import editor as ed
+    from src.paste.calibrate import (
+        CALIBRATION_PATH,
+        ShopScrollCalibration,
+        save_calibration,
+    )
+
+    if device_serial:
+        _configure_device(device_serial)
+    session = ed.EditorSession(device=device_serial)
+    try:
+        session.enter_edit_mode()  # opens editor if needed; never places anything
+    except Exception as exc:  # noqa: BLE001 - surface a friendly message
+        print(f"Could not open the village editor for calibration: {exc}")
+        return 1
+
+    import cocbot.io as coc_io
+
+    shot = coc_io.capture_screenshot()
+    height, width = shot.shape[:2]
+
+    # Seed geometry from existing shop constants (repo values, not invented).
+    first_slot_x, slot_y = ed.SHOP_FIRST_SLOT
+    slot_width = ed.SHOP_SLOT_STEP_X
+    strip_x_min, strip_x_max = 90, width - 90
+    strip_y_min, strip_y_max = slot_y - 40, slot_y + 40
+    swipe_start_x, swipe_end_x = ed.SHOP_SCROLL_FROM_X, ed.SHOP_SCROLL_TO_X
+
+    if args.strip:
+        try:
+            strip_x_min, strip_x_max, strip_y_min, strip_y_max = (
+                int(v) for v in args.strip.split(",")
+            )
+        except ValueError:
+            print("--strip must be 'x_min,x_max,y_min,y_max'")
+            return 1
+    if args.swipe_x:
+        try:
+            swipe_start_x, swipe_end_x = (int(v) for v in args.swipe_x.split(","))
+        except ValueError:
+            print("--swipe-x must be 'start_x,end_x'")
+            return 1
+
+    verified = args.slots_per_swipe is not None
+    cal = ShopScrollCalibration(
+        screen_width=width,
+        screen_height=height,
+        strip_x_min=strip_x_min,
+        strip_x_max=strip_x_max,
+        strip_y_min=strip_y_min,
+        strip_y_max=strip_y_max,
+        visible_slot_count=args.visible_slots,
+        first_slot_x=first_slot_x,
+        slot_y=slot_y,
+        slot_width=slot_width,
+        swipe_start_x=swipe_start_x,
+        swipe_end_x=swipe_end_x,
+        slots_per_swipe=args.slots_per_swipe or 1,
+        verified=verified,
+        notes="auto-seeded; measure --slots-per-swipe on-device to verify",
+    )
+    problems = cal.validate()
+    if problems:
+        print("Calibration values are out of bounds; not saving:")
+        for p in problems:
+            print(f"  - {p}")
+        return 1
+
+    save_calibration(cal, CALIBRATION_PATH)
+    if verified:
+        print(f"Saved VERIFIED shop-scroll calibration to {CALIBRATION_PATH}")
+        print("Slot 9+ shop items are now scrollable (dry-run shows them; live needs --live).")
+    else:
+        print(f"Saved DRAFT calibration to {CALIBRATION_PATH} (verified=false; inactive).")
+        print(
+            "Measure how many slots one swipe shifts the strip, then re-run:\n"
+            "  python -m src.paste --calibrate-shop-scroll --slots-per-swipe <N>"
+        )
+    return 0

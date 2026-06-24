@@ -157,6 +157,7 @@ class EditorSession:
         self._device_configured = False
         self.placements_since_calibration = 0
         self._trap_mode = False
+        self._scroll_calibration = None  # injectable ShopScrollCalibration (tests)
 
     def enter_edit_mode(self) -> None:
         self._ensure_device_configured()
@@ -261,9 +262,102 @@ class EditorSession:
             raise EditorPlacementError(
                 f"No shop slot mapping for {obj.type!r}; refusing to guess"
             )
-        x, y = _shop_slot_point(slot_index)
-        logger.debug(f"Selecting shop icon for {obj.type} at slot {slot_index}")
+        # Route through the scroll helper: visible slots return immediately,
+        # off-screen slots scroll (if calibrated) or yield None -> we refuse to
+        # tap rather than hit an off-screen coordinate.
+        point = self.ensure_shop_slot_visible(slot_index, obj.type)
+        if point is None:
+            raise EditorPlacementError(
+                f"Shop slot {slot_index} for {obj.type!r} could not be made "
+                "visible safely; refusing to tap"
+            )
+        x, y = point
+        logger.debug(f"Selecting shop icon for {obj.type} at ({x}, {y})")
         tap(x, y, delay=0.3)
+
+    def ensure_shop_slot_visible(
+        self, slot_index: int, object_type: str
+    ) -> tuple[int, int] | None:
+        """Return an ON-SCREEN pixel to tap for a shop slot, scrolling the
+        inventory strip horizontally if needed. Returns ``None`` (caller MUST
+        skip) when the slot cannot be safely made visible.
+
+        Safety contract:
+          * visible slots (0..MAX_VISIBLE_SHOP_SLOT) return immediately;
+          * off-screen slots only scroll when a verified calibration exists
+            (config/shop_scroll_calibration.json) -- otherwise return None and
+            tap nothing;
+          * every swipe stays inside verified strip bounds and is bounds-checked;
+          * edit mode is re-asserted before AND after each scroll (loss raises);
+          * the returned point is asserted on-screen -- never an off-screen tap.
+        """
+        from src.paste.calibrate import (  # local import keeps editor light
+            load_calibration,
+            point_for_slot,
+            steps_needed,
+            swipe_points,
+        )
+
+        if _slot_is_visible(slot_index):
+            return _shop_slot_point(slot_index)
+
+        cal = self._scroll_calibration or load_calibration()
+        if cal is None:
+            logger.warning(
+                f"{object_type}: shop slot {slot_index} requires horizontal "
+                "scroll, but no verified calibration was found "
+                "(run: python -m src.paste --calibrate-shop-scroll); skipping."
+            )
+            return None
+
+        target_steps = steps_needed(slot_index, cal)
+        if target_steps is None:
+            logger.warning(
+                f"{object_type}: shop slot {slot_index} unreachable within "
+                f"{cal.max_scroll_steps} calibrated swipe(s); skipping."
+            )
+            return None
+
+        x1, y1, x2, y2 = swipe_points(cal)
+        _assert_on_screen(x1, y1)
+        _assert_on_screen(x2, y2)
+        for step in range(1, target_steps + 1):
+            self.assert_edit_mode()  # re-check BEFORE scrolling
+            logger.info(
+                f"scroll {object_type} slot {slot_index}: swipe "
+                f"({x1},{y1})->({x2},{y2}) step {step}/{target_steps}"
+            )
+            swipe(x1, y1, x2, y2, duration_ms=cal.swipe_duration_ms)
+            self.assert_edit_mode()  # re-check AFTER scrolling (loss -> raises)
+
+        # Prefer a template locator if one is wired; else use calibrated math.
+        located = self._locate_shop_icon(object_type)
+        point = (
+            located if located is not None
+            else point_for_slot(slot_index, target_steps, cal)
+        )
+        if point is None:
+            logger.warning(
+                f"{object_type}: shop slot {slot_index} not visible after "
+                f"{target_steps} scroll step(s); skipping."
+            )
+            return None
+        px, py = int(point[0]), int(point[1])
+        _assert_on_screen(px, py)  # never return an off-screen tap
+        logger.info(
+            f"scroll {object_type} slot {slot_index}: visible at ({px},{py})"
+        )
+        return (px, py)
+
+    def _locate_shop_icon(self, object_type: str) -> tuple[int, int] | None:
+        """Detect the current on-screen pixel of a shop icon after scrolling.
+
+        Placeholder hook: returns ``None`` until a per-icon template/detector is
+        supplied as part of calibration. Tests monkeypatch this to simulate the
+        target becoming visible. Without it, scrolling can never produce a tap,
+        so the paster stays safe by skipping.
+        """
+        return None
 
     def rotate_selected(self, rotation: int) -> None:
         turns = (rotation // 90) % 4
@@ -684,6 +778,22 @@ def shop_slot_point_for(obj: PasteObject) -> tuple[int, int] | None:
     if not (0 <= x < SCREEN_WIDTH and 0 <= y < SCREEN_HEIGHT):
         return None
     return (x, y)
+
+
+# Slots 0..MAX_VISIBLE_SHOP_SLOT are on-screen at 1920x1080 (105 + col*202);
+# slots 9+ require horizontal scrolling driven by src.paste.calibrate.
+MAX_VISIBLE_SHOP_SLOT = 8
+
+# Seed swipe endpoints (on-screen, inside the strip) used by the calibration
+# command when measuring. Live scrolling uses the values saved in
+# config/shop_scroll_calibration.json -- not these.
+SHOP_SCROLL_FROM_X = 1700
+SHOP_SCROLL_TO_X = 300
+
+
+def _slot_is_visible(slot_index: int) -> bool:
+    x, y = _shop_slot_point(slot_index)
+    return 0 <= x < SCREEN_WIDTH and 0 <= y < SCREEN_HEIGHT
 
 
 EDITOR_OPEN_TAPS = (

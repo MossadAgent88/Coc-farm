@@ -763,25 +763,49 @@ class Component extends DCLogic {
     if (!Array.isArray(events)) return;
     events.forEach(e => this.applyBackendEvent(e));
   }
-  applyBackendEvent(e) {
-    if (!e || !e.kind) return;
-    if (e.kind === 'log') this.pushLog(this.levelName(e.level), e.text || '');
-    else if (e.kind === 'status') this.setState({ running: !!e.running });
-    else if (e.kind === 'bot_event') this.applyBotEvent(e.event || {});
-    else if (e.kind === 'update_result') this.applyUpdateResult(e.info, e.error);
-    else if (e.kind === 'copy_link') this.copyText(e.link || '');
-    else if (e.kind === 'process_exit') this.pushLog('DEBUG', `Bot process exited with code ${e.code}`);
-  }
+    applyBackendEvent(e) {
+        if (!e || !e.kind) return;
+        if (e.kind === 'log') this.pushLog(this.levelName(e.level), e.text || '');
+        else if (e.kind === 'status') this.setState({ running: !!e.running });
+        else if (e.kind === 'bot_event') this.applyBotEvent(e.event || {});
+        else if (e.kind === 'update_result') this.applyUpdateResult(e.info, e.error);
+        else if (e.kind === 'update_applied') this.applyUpdateApplied();
+        else if (e.kind === 'update_failed') this.applyUpdateFailed(e.error || 'Unknown error');
+        else if (e.kind === 'copy_link') this.copyText(e.link || '');
+        else if (e.kind === 'process_exit') this.pushLog('DEBUG', `Bot process exited with code ${e.code}`);
+    }
   applyBotEvent(e) {
     if (e.type === 'cycle_start') this.setState({ cycle: e.n || 0 });
     if (e.type === 'step') this.setState({ result: { text: e.label || 'Working', type: 'idle' } });
     if (e.type === 'attack_complete') this.pushLog('INFO', `Attack cycle ${e.cycle} complete`);
   }
   applyUpdateResult(info, error) {
-    if (error) { this.pushLog('ERROR', `Update check failed: ${error}`); this.showToast('Update check failed', 'error'); return; }
+    if (error) {
+      const msg = String(error);
+      this.pushLog('ERROR', `Update check failed: ${msg}`);
+      this.showToast(msg.includes('No Windows ZIP asset') ? msg : 'Update check failed', 'error');
+      return;
+    }
     if (!info) { this.pushLog('INFO', 'Already up to date'); this.showToast('Already up to date', 'info'); return; }
-    this.pushLog('INFO', `Update available: v${info.version}`);
-    this.showToast(`Update available: v${info.version}`, 'info');
+    this.pushLog('INFO', `Update available: v${info.version} (asset: ${info.asset_name || '?'})`);
+    this.showToast(`Downloading v${info.version}…`, 'info');
+    // Auto-trigger the download + install now that an update is confirmed.
+    this.callApi('apply_update', info);
+  }
+  applyUpdateApplied() {
+    this.pushLog('SUCCESS', 'Update downloaded. The app will close and relaunch to finish installing.');
+    this.showToast('Update downloaded — restarting…', 'success');
+  }
+  applyUpdateFailed(error) {
+    const msg = String(error || 'Unknown error');
+    this.pushLog('ERROR', `Update failed: ${msg}`);
+    if (/not.*frozen|from source/i.test(msg)) {
+      this.pushLog('INFO', 'Auto-update only works in the built app. Opening the GitHub Releases page…');
+      this.showToast('Update from GitHub (dev mode)', 'info');
+      this.callApi('open_link', 'https://github.com/MossadAgent88/Coc-farm/releases/latest');
+    } else {
+      this.showToast(`Update failed: ${msg}`, 'error');
+    }
   }
   levelName(level) {
     const x = String(level || 'INFO').toUpperCase();

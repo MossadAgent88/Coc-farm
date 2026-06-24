@@ -121,6 +121,17 @@ class WebApi:
         self.controller.check_update()
         return {"ok": True}
 
+    def apply_update(self, info: dict[str, Any]) -> dict[str, Any]:
+        """Download + install the update described by ``info``.
+
+        ``info`` is the dict returned by ``check_for_update`` (version, url,
+        asset_name, sha256, sha256_url). The controller runs the download in a
+        background thread and emits ``update_applied`` / ``update_failed``
+        events that the GUI surfaces.
+        """
+        self.controller.apply_update(info)
+        return {"ok": True}
+
     def run_tool(self, name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = payload or {}
         settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else None
@@ -235,6 +246,7 @@ BRIDGE_METHODS = (
     "default_settings",
     "reload_config",
     "check_update",
+    "apply_update",
     "run_tool",
     "save_library",
     "open_link",

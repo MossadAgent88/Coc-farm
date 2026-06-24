@@ -178,8 +178,10 @@ def build_plan(
     # keeps "is this placeable?" identical to what the editor will actually do,
     # so we never plan a placement the editor would later refuse or a tap that
     # would land off-screen.
+    from src.paste.calibrate import load_calibration, steps_needed
     from src.paste.editor import _shop_slot_from_object, shop_slot_point_for
 
+    scroll_cal = load_calibration()
     actions: list[PlacementAction] = []
     for obj in sorted(layout.objects, key=_object_sort_key):
         if obj.is_wall:
@@ -221,21 +223,36 @@ def build_plan(
             )
             continue
         if shop_slot_point_for(obj) is None:
-            if _shop_slot_from_object(obj) is None:
-                reason = (
-                    f"no shop slot mapping for {obj.type!r}; "
-                    "not placeable from current editor shop layout"
-                )
-            else:
-                reason = (
-                    f"shop slot for {obj.type!r} is off-screen on this resolution "
-                    "(needs horizontal scrolling, which is unsupported); skipping "
-                    "instead of tapping an impossible coordinate"
-                )
-            actions.append(
-                PlacementAction(kind="skip", key=obj.key, obj=obj, reason=reason)
+            slot = _shop_slot_from_object(obj)
+            if slot is None:
+                actions.append(PlacementAction(
+                    kind="skip", key=obj.key, obj=obj,
+                    reason=f"no shop slot mapping for {obj.type!r}; unsupported, skipped",
+                ))
+                continue
+            if scroll_cal is None:
+                actions.append(PlacementAction(
+                    kind="skip", key=obj.key, obj=obj,
+                    reason=(
+                        f"requires horizontal scroll to reach {obj.type!r} "
+                        "(calibration missing; run --calibrate-shop-scroll); skipped"
+                    ),
+                ))
+                continue
+            if steps_needed(slot, scroll_cal) is None:
+                actions.append(PlacementAction(
+                    kind="skip", key=obj.key, obj=obj,
+                    reason=(
+                        f"requires horizontal scroll to reach {obj.type!r} but it is "
+                        "unreachable with current calibration; skipped"
+                    ),
+                ))
+                continue
+            # calibrated + reachable: fall through to PLACE; the editor scrolls
+            # the inventory strip (bounded, edit-mode re-checked) before tapping.
+            logger.info(
+                f"{obj.type} (slot {slot}) is calibrated-scrollable; will scroll to place"
             )
-            continue
         if obj.low_confidence:
             logger.warning(
                 f"Low-confidence object will still be placed and flagged: "

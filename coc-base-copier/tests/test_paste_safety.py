@@ -75,8 +75,11 @@ def test_shop_slot_point_for_rejects_offscreen_slots():
 
 @pytest.mark.parametrize("type_", ["x_bow", "inferno_tower", "scattershot"])
 def test_offscreen_defense_is_skipped_not_tapped(type_):
+    # Off-screen (slot 9+) mapped defenses are skipped (not tapped) and marked
+    # as requiring horizontal scroll in the dry-run plan.
     plan = build_plan(_bundle([_obj(type_, "defense")]))
-    assert "off-screen" in _skip_reason(plan).lower()
+    reason = _skip_reason(plan).lower()
+    assert "scroll" in reason and "calibration missing" in reason
 
 
 def test_eagle_artillery_skipped_for_th18():
@@ -180,3 +183,4 @@ def test_sample_json_requires_live_flag(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert "SAMPLE" in out
     assert "Safe mode" in out and "--live" in out
+
